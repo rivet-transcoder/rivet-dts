@@ -1,0 +1,24 @@
+[package]
+name = "rivet-dts"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license-file = "LICENSE.md"
+readme = "README.md"
+repository = "https://github.com/rivet-transcoder/rivet-dts"
+homepage = "https://github.com/rivet-transcoder/rivet-dts"
+documentation = "https://docs.rs/rivet-dts"
+authors = ["Ely Erin Fox"]
+description = "A DTS Coherent Acoustics core decoder in Rust, written from ETSI TS 102 114: no C, no system libraries, no build script. Mono to 5.1 at up to 48 kHz; DTS-HD tracks decode as their core. rivet's DTS decoder. Imported as `dts`."
+keywords = ["dts", "dca", "audio", "decoder", "codec"]
+categories = ["multimedia::audio", "multimedia::encoding"]
+exclude = [".github/", "docs/", "fuzz/", "tools/"]
+
+[lib]
+name = "dts"
+
+[dependencies]
+thiserror = "2"
+
+[features]
+default = []

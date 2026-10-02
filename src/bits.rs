@@ -5,7 +5,7 @@
 //! alignment until the optional trailer, so one cursor over the whole frame
 //! is all the decoder needs.
 
-use super::DtsError;
+use super::Error;
 
 pub struct BitReader<'a> {
     data: &'a [u8],
@@ -26,13 +26,13 @@ impl<'a> BitReader<'a> {
     /// Read `n` bits (0..=32) as an unsigned value. Running past the end of
     /// the frame is an error: DTS frames carry their byte size in the header,
     /// so a short read means a corrupt or truncated frame, not an EOS.
-    pub fn bits(&mut self, n: u32) -> Result<u32, DtsError> {
+    pub fn bits(&mut self, n: u32) -> Result<u32, Error> {
         debug_assert!(n <= 32);
         if n == 0 {
             return Ok(0);
         }
         if self.remaining() < n as usize {
-            return Err(DtsError::Truncated {
+            return Err(Error::Truncated {
                 at_bit: self.pos,
                 wanted: n,
             });
@@ -53,14 +53,14 @@ impl<'a> BitReader<'a> {
     }
 
     /// Read a single bit as a flag.
-    pub fn flag(&mut self) -> Result<bool, DtsError> {
+    pub fn flag(&mut self) -> Result<bool, Error> {
         Ok(self.bits(1)? == 1)
     }
 
     /// Read `n` bits (1..=32) as a two's-complement signed value — the form
     /// the spec's `SignExtension(nCode)` produces for "no further encoding"
     /// quantisation indices and for the 8-bit LFE samples.
-    pub fn sbits(&mut self, n: u32) -> Result<i32, DtsError> {
+    pub fn sbits(&mut self, n: u32) -> Result<i32, Error> {
         debug_assert!((1..=32).contains(&n));
         let v = self.bits(n)?;
         let shift = 32 - n;
@@ -103,7 +103,7 @@ mod tests {
         assert_eq!(r.bits(4).unwrap(), 0xA);
         assert!(matches!(
             r.bits(5),
-            Err(DtsError::Truncated { at_bit: 4, wanted: 5 })
+            Err(Error::Truncated { at_bit: 4, wanted: 5 })
         ));
         // A failed read consumes nothing.
         assert_eq!(r.bits(4).unwrap(), 0xB);

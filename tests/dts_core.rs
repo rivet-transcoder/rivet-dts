@@ -2,10 +2,10 @@
 //!
 //! ffmpeg's `dca` encoder makes the vectors from known lavfi signals, its
 //! decoder turns them back into float PCM, and this crate's decoder has to
-//! agree with that PCM per channel. ffmpeg is not a dependency of rivet: the
-//! tests skip with a message when it is not on PATH, the same way
-//! `rivet/tests/fidelity_ffprobe.rs` does. They run on the developer boxes
-//! and the CI images that carry ffmpeg.
+//! agree with that PCM per channel. ffmpeg is used only as a black box (its
+//! command-line tools' output) and is not a dependency: the tests skip with
+//! a message when it is not on PATH, unless `DTS_REQUIRE_FFMPEG` is set (as
+//! in CI's oracle job), in which case a missing ffmpeg fails them.
 //!
 //! What ffmpeg's encoder exercises: Huffman, block-coded and linear
 //! quantisation indices, 6/7-bit scale factors, joint-intensity-free 5.1 and
@@ -16,18 +16,25 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use codec::audio::create_decoder;
+use dts::Decoder;
 
 fn ffmpeg_available() -> bool {
-    Command::new("ffmpeg")
+    let ok = Command::new("ffmpeg")
         .arg("-version")
         .output()
         .map(|o| o.status.success())
-        .unwrap_or(false)
+        .unwrap_or(false);
+    assert!(
+        ok || std::env::var_os("DTS_REQUIRE_FFMPEG").is_none(),
+        "DTS_REQUIRE_FFMPEG is set but ffmpeg is not on PATH"
+    );
+    ok
 }
 
-fn scratch_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("rivet_dts_core_{}", std::process::id()));
+/// A scratch directory per test: the tests run in parallel and each removes
+/// its directory when done, so a shared one could vanish under another.
+fn scratch_dir(test: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("rivet_dts_core_{}_{test}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("scratch dir");
     dir
 }
@@ -49,7 +56,7 @@ fn run_ffmpeg(args: &[&str]) {
 /// Encode a lavfi `graph` (one audio output) with ffmpeg's DTS encoder, and
 /// decode the result back with libavcodec: `(dts bytes, reference f32 PCM)`.
 fn make_vector(name: &str, graph: &str, bitrate: &str) -> (Vec<u8>, Vec<f32>) {
-    let dir = scratch_dir();
+    let dir = scratch_dir(name);
     let dts = dir.join(format!("{name}.dts"));
     let raw = dir.join(format!("{name}.f32"));
     run_ffmpeg(&[
@@ -60,8 +67,10 @@ fn make_vector(name: &str, graph: &str, bitrate: &str) -> (Vec<u8>, Vec<f32>) {
     let dts_bytes = std::fs::read(&dts).unwrap();
     let raw_bytes = std::fs::read(&raw).unwrap();
     let reference: Vec<f32> = raw_bytes
-        .chunks_exact(4)
-        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| f32::from_le_bytes(*b))
         .collect();
     let _ = std::fs::remove_file(&dts);
     let _ = std::fs::remove_file(&raw);
@@ -69,33 +78,30 @@ fn make_vector(name: &str, graph: &str, bitrate: &str) -> (Vec<u8>, Vec<f32>) {
     (dts_bytes, reference)
 }
 
-/// `FSIZE + 1` of the core frame at the start of `b` (14 bits at bit 46).
+/// `FSIZE + 1` of the core frame at the start of `b`.
 fn core_frame_len(b: &[u8]) -> usize {
     assert_eq!(&b[..4], &[0x7F, 0xFE, 0x80, 0x01], "core sync word");
-    let fsize = ((b[5] as usize & 0x03) << 12) | ((b[6] as usize) << 4) | (b[7] as usize >> 4);
-    fsize + 1
+    dts::frame_len(b).expect("core frame header")
 }
 
 /// Feed the raw stream one core frame per packet, as a container would, and
 /// return `(interleaved PCM, channels, sample rate)`.
-fn decode_all(dts: &[u8], container_channels: u8) -> (Vec<f32>, usize, u32) {
-    let mut dec = create_decoder("dts", None, 48_000, container_channels).expect("dts decoder");
+fn decode_all(dts: &[u8]) -> (Vec<f32>, usize, u32) {
+    let mut dec = Decoder::new();
     let mut pcm = Vec::new();
     let (mut channels, mut rate) = (0usize, 0u32);
     let mut off = 0;
-    let mut pts = 0i64;
     while off + 8 <= dts.len() {
         let len = core_frame_len(&dts[off..]);
-        let frames = dec.decode(&dts[off..off + len], pts).unwrap_or_else(|e| panic!("frame at byte {off}: {e}"));
+        let frames = dec.decode(&dts[off..off + len]).unwrap_or_else(|e| panic!("frame at byte {off}: {e}"));
         for f in frames {
-            channels = f.channels as usize;
+            assert_eq!(f.channels, f.layout.channels());
+            channels = f.channels;
             rate = f.sample_rate;
-            pts = f.pts + (f.samples.len() / channels) as i64 * 1_000_000 / rate as i64;
             pcm.extend_from_slice(&f.samples);
         }
         off += len;
     }
-    pcm.extend(dec.flush().unwrap().into_iter().flat_map(|f| f.samples));
     (pcm, channels, rate)
 }
 
@@ -151,7 +157,7 @@ fn check(name: &str, graph: &str, bitrate: &str, expect_channels: usize, expect_
         return;
     }
     let (dts, reference) = make_vector(name, graph, bitrate);
-    let (ours, channels, rate) = decode_all(&dts, expect_channels as u8);
+    let (ours, channels, rate) = decode_all(&dts);
     assert_eq!(channels, expect_channels, "{name}: channel count");
     assert_eq!(rate, expect_rate, "{name}: sample rate");
     eprintln!(
@@ -248,7 +254,7 @@ fn real_sample_if_pointed_at_one() {
         return;
     };
     let dts = std::fs::read(&path).expect("read RIVET_DTS_SAMPLE");
-    let mut dec = create_decoder("dts", None, 48_000, 6).unwrap();
+    let mut dec = Decoder::new();
     let (mut off, mut pcm, mut channels) = (0usize, Vec::<f32>::new(), 0usize);
     // Per frame: `Some(sample offset)` for a decoded frame, `None` for a
     // refused one.
@@ -258,15 +264,15 @@ fn real_sample_if_pointed_at_one() {
     while off + 8 <= dts.len() {
         let len = core_frame_len(&dts[off..]);
         let start = pcm.len();
-        match dec.decode(&dts[off..off + len], 0) {
+        match dec.decode(&dts[off..off + len]) {
             Ok(out) => {
                 for f in out {
-                    channels = f.channels as usize;
+                    channels = f.channels;
                     pcm.extend_from_slice(&f.samples);
                 }
                 frames.push(Some(start));
             }
-            Err(codec::audio::AudioError::Unsupported(reason)) => {
+            Err(dts::Error::Unsupported(reason)) => {
                 // Keep the reason without the per-frame count so alike
                 // refusals group.
                 let key = reason.split(" (PMODE").next().unwrap_or(&reason).to_string();
@@ -296,13 +302,15 @@ fn real_sample_if_pointed_at_one() {
         eprintln!("real_sample: parse error at frame {at}: {e}");
     }
     if decoded > 0 && ffmpeg_available() {
-        let dir = scratch_dir();
+        let dir = scratch_dir("real_sample");
         let raw = dir.join("real_sample.f32");
         run_ffmpeg(&["-i", path.to_str().unwrap(), "-c:a", "pcm_f32le", "-f", "f32le", raw.to_str().unwrap()]);
         let reference: Vec<f32> = std::fs::read(&raw)
             .unwrap()
-            .chunks_exact(4)
-            .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_le_bytes(*b))
             .collect();
         let _ = std::fs::remove_file(&raw);
         let _ = std::fs::remove_dir(&dir);

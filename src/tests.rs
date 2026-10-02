@@ -1,5 +1,5 @@
 //! Decoder-level tests. The conformance comparison against libavcodec's
-//! decode of ffmpeg-made vectors lives in `crates/codec/tests/dts_core.rs`
+//! decode of ffmpeg-made vectors lives in `tests/dts_core.rs`
 //! (it needs the fixture files); these cover the frame-level contracts.
 
 use super::*;
@@ -71,42 +71,42 @@ fn frame_with_adpcm() -> Vec<u8> {
 
 #[test]
 fn adpcm_prediction_is_refused_by_name() {
-    let mut d = DtsDecoder::new(48_000, 6).unwrap();
-    let err = d.decode(&frame_with_adpcm(), 0).unwrap_err();
-    assert!(matches!(err, AudioError::Unsupported(_)), "{err}");
+    let mut d = Decoder::new();
+    let err = d.decode(&frame_with_adpcm()).unwrap_err();
+    assert!(matches!(err, Error::Unsupported(_)), "{err}");
     assert!(err.to_string().contains("ADPCM prediction (PMODE = 1 in 1 subbands)"), "{err}");
     assert!(err.to_string().contains("D.10.1"), "{err}");
 }
 
 #[test]
 fn rejects_non_dts_packets_by_name() {
-    let mut d = DtsDecoder::new(48_000, 6).unwrap();
-    let err = d.decode(&[0x0B, 0x77, 0, 0, 0, 0, 0, 0, 0, 0], 0).unwrap_err();
+    let mut d = Decoder::new();
+    let err = d.decode(&[0x0B, 0x77, 0, 0, 0, 0, 0, 0, 0, 0]).unwrap_err();
     assert!(err.to_string().contains("0x7FFE8001"), "{err}");
 }
 
 #[test]
 fn a_short_packet_is_truncated_not_zero_filled() {
-    let mut d = DtsDecoder::new(48_000, 6).unwrap();
+    let mut d = Decoder::new();
     let f = header(1, 15, 2047, 9, 13, 2, 7);
-    let err = d.decode(&f[..100], 0).unwrap_err();
+    let err = d.decode(&f[..100]).unwrap_err();
     assert!(err.to_string().contains("truncated"), "{err}");
 }
 
 #[test]
 fn termination_frames_are_refused_by_name() {
-    let mut d = DtsDecoder::new(48_000, 6).unwrap();
+    let mut d = Decoder::new();
     let f = header(0, 15, 2047, 9, 13, 2, 7);
-    let err = d.decode(&f, 0).unwrap_err();
-    assert!(matches!(err, AudioError::Unsupported(_)), "{err}");
+    let err = d.decode(&f).unwrap_err();
+    assert!(matches!(err, Error::Unsupported(_)), "{err}");
     assert!(err.to_string().contains("termination frame"), "{err}");
 }
 
 #[test]
 fn incompatible_encoder_revisions_are_refused_by_name() {
-    let mut d = DtsDecoder::new(48_000, 6).unwrap();
+    let mut d = Decoder::new();
     let f = header(1, 15, 2047, 9, 13, 2, 9);
-    let err = d.decode(&f, 0).unwrap_err();
+    let err = d.decode(&f).unwrap_err();
     assert!(err.to_string().contains("VERNUM 9"), "{err}");
 }
 
@@ -121,24 +121,24 @@ fn arrangements_without_a_pipeline_layout_are_refused_by_name() {
     // L + R + S.
     assert!(output_layout(6, false).is_err());
     // And a frame carrying one is refused before any audio is parsed.
-    let mut d = DtsDecoder::new(48_000, 6).unwrap();
+    let mut d = Decoder::new();
     let f = header(1, 15, 2047, 10, 13, 0, 7);
-    let err = d.decode(&f, 0).unwrap_err();
-    assert!(matches!(err, AudioError::Unsupported(_)), "{err}");
+    let err = d.decode(&f).unwrap_err();
+    assert!(matches!(err, Error::Unsupported(_)), "{err}");
 }
 
 #[test]
 fn the_five_one_core_maps_onto_the_family_1_order() {
     use Slot::*;
     // Core order is C L R SL SR (+LFE); pipeline order is FL FR FC LFE SL SR.
-    let (name, slots) = output_layout(9, true).unwrap();
-    assert_eq!(name, "5.1(side)");
+    let (layout, slots) = output_layout(9, true).unwrap();
+    assert_eq!(layout.name(), "5.1(side)");
     assert_eq!(slots, vec![Core(1), Core(2), Core(0), Lfe, Core(3), Core(4)]);
-    let (name, slots) = output_layout(2, true).unwrap();
-    assert_eq!(name, "2.1");
+    let (layout, slots) = output_layout(2, true).unwrap();
+    assert_eq!(layout.name(), "2.1");
     assert_eq!(slots, vec![Core(0), Core(1), Lfe]);
-    let (name, slots) = output_layout(0, false).unwrap();
-    assert_eq!(name, "mono");
+    let (layout, slots) = output_layout(0, false).unwrap();
+    assert_eq!(layout.name(), "mono");
     assert_eq!(slots, vec![Core(0)]);
 }
 
@@ -150,8 +150,26 @@ fn sum_difference_pairs_follow_amode_channel_order() {
 }
 
 #[test]
-fn decoder_construction_bounds_the_channel_count() {
-    assert!(DtsDecoder::new(48_000, 0).is_err());
-    assert!(DtsDecoder::new(48_000, 7).is_err());
-    assert!(DtsDecoder::new(48_000, 6).is_ok());
+fn every_layout_has_as_many_speakers_as_slots() {
+    for amode in 0..16 {
+        for lfe in [false, true] {
+            if let Ok((layout, slots)) = output_layout(amode, lfe) {
+                assert_eq!(layout.channels(), slots.len(), "AMODE {amode} lfe {lfe}");
+                assert_eq!(layout.speakers().contains(&Speaker::LFE), lfe, "AMODE {amode}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_refused_frame_still_reports_its_layout() {
+    // The layout is mapped from the header before any audio is parsed, as
+    // a caller reporting "dropped, with the reason" wants it.
+    let mut d = Decoder::new();
+    assert_eq!(d.layout(), None);
+    assert!(d.decode(&frame_with_adpcm()).is_err());
+    assert_eq!(d.layout(), Some(Layout::Surround51Side));
+    let info = d.info().unwrap();
+    assert_eq!((info.amode, info.lfe, info.sample_rate), (9, true, 48_000));
+    assert!(!d.hf_vq_skipped());
 }

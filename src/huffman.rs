@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use super::bits::BitReader;
 use super::tables::{self, HuffEntry};
-use super::DtsError;
+use super::Error;
 
 /// A Huffman code book indexed for decoding: for every code length, the
 /// `(code, level)` pairs of that length. The books are small (≤ 129
@@ -30,7 +30,7 @@ impl Codebook {
     /// Decode one symbol. The books are complete prefix codes (the generator
     /// checks Kraft sum == 1), so every bit string of `max_len` bits has a
     /// match; not finding one means the table is wrong, not the stream.
-    pub fn decode(&self, r: &mut BitReader) -> Result<i32, DtsError> {
+    pub fn decode(&self, r: &mut BitReader) -> Result<i32, Error> {
         let mut code = 0u32;
         for len in 1..=self.max_len {
             code = (code << 1) | r.bits(1)?;
@@ -38,7 +38,7 @@ impl Codebook {
                 return Ok(level);
             }
         }
-        Err(DtsError::Invalid("Huffman code not in book (complete code book cannot fail — table defect)"))
+        Err(Error::Invalid("Huffman code not in book (complete code book cannot fail — table defect)"))
     }
 }
 
@@ -163,12 +163,12 @@ pub enum SampleCoding {
 
 /// Resolve `(ABITS, SEL)` to a coding. `sel` is `SEL[ch][ABITS-1]` — for
 /// `ABITS` > 10 it is not transmitted and must be 0.
-pub fn sample_coding(abits: u32, sel: u32) -> Result<SampleCoding, DtsError> {
-    fn pick(books: &[&'static Codebook], sel: u32, last: SampleCoding) -> Result<SampleCoding, DtsError> {
+pub fn sample_coding(abits: u32, sel: u32) -> Result<SampleCoding, Error> {
+    fn pick(books: &[&'static Codebook], sel: u32, last: SampleCoding) -> Result<SampleCoding, Error> {
         match books.get(sel as usize) {
             Some(b) => Ok(SampleCoding::Huffman(b)),
             None if sel as usize == books.len() => Ok(last),
-            None => Err(DtsError::Invalid("SEL out of range for this ABITS")),
+            None => Err(Error::Invalid("SEL out of range for this ABITS")),
         }
     }
     let block = |levels: u32| {
@@ -194,21 +194,21 @@ pub fn sample_coding(abits: u32, sel: u32) -> Result<SampleCoding, DtsError> {
         9 => pick(&[&A65, &B65, &C65, &D65, &E65, &F65, &G65], sel, SampleCoding::Raw { bits: 6 }),
         10 => pick(&[&A129, &B129, &C129, &D129, &E129, &F129, &G129], sel, SampleCoding::Raw { bits: 7 }),
         11..=26 => Ok(SampleCoding::Raw { bits: abits - 3 }),
-        _ => Err(DtsError::Invalid("ABITS above 26")),
+        _ => Err(Error::Invalid("ABITS above 26")),
     }
 }
 
 /// Decode one 4-element block code (Annex C.3.2, arithmetic form): the code
 /// is the mixed-radix number `i0 + L·i1 + L²·i2 + L³·i3` of the four
 /// zero-centred indices.
-pub fn decode_block(mut code: u32, levels: u32, out: &mut [i32; 4]) -> Result<(), DtsError> {
+pub fn decode_block(mut code: u32, levels: u32, out: &mut [i32; 4]) -> Result<(), Error> {
     let offset = ((levels - 1) / 2) as i32;
     for v in out.iter_mut() {
         *v = (code % levels) as i32 - offset;
         code /= levels;
     }
     if code != 0 {
-        return Err(DtsError::Invalid("block code out of range"));
+        return Err(Error::Invalid("block code out of range"));
     }
     Ok(())
 }
