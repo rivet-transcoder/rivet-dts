@@ -1,4 +1,4 @@
-rivet-dts — a DTS Coherent Acoustics core decoder
+rivet-dts — a DTS Coherent Acoustics decoder and core encoder
 Copyright 2026 Ely Erin Fox
 
 This product is licensed under the Open Encoding Attribution License,
@@ -10,19 +10,25 @@ be carried forward with any distribution.
 Provenance
 ------------------------------------------------------------------------------
 
-The decoder is an original implementation written from ETSI TS 102 114
-V1.6.1 (2019-08), "DTS Coherent Acoustics; Core and Extensions with
-Additional Profiles", published free of charge by ETSI. It is not a
-translation of, and does not derive from, any other DTS decoder's source.
-The normative tables (Annex D) were transcribed from the ETSI PDF by
-tools/dts_gen_tables.py and cross-checked against the V1.2.1 (2002-12)
-edition. The two code books no ETSI edition prints (D.10.1 and D.10.2) are
-not included and were not taken from anywhere else.
+The decoder and encoder are original implementations written from ETSI TS
+102 114 V1.6.1 (2019-08), "DTS Coherent Acoustics; Core and Extensions with
+Additional Profiles", published free of charge by ETSI. They are not
+translations of, and do not derive from, any other DTS implementation's
+source. The normative tables (Annex D) were transcribed from the ETSI PDF by
+tools/dts_gen_tables.py and cross-checked against the V1.2.1 (2002-12) and,
+for D.9 and D.11, V1.4.1 (2012-11) editions.
 
-The decoder is verified against ffmpeg's decoder, used only as a black box
-(a command-line tool whose PCM is compared); none of its code is included
-or was consulted. The test streams are made at test time by ffmpeg's
-encoder, run the same way.
+The two code books no ETSI edition prints (D.10.1, the ADPCM prediction
+coefficients, and D.10.2, the high-frequency subband vectors) are not
+included and were not taken from anywhere. The crate accepts them from a
+caller who holds them; AdpcmCodebook::private_test_book() is a code book of
+stable predictors constructed in this crate, not D.10.1.
+
+No other implementation is used in testing, as a library, a program or a
+test oracle. The public sample streams the sample tests decode are fetched
+at test time, as data, from https://samples.ffmpeg.org/A-codecs/DTS/ and
+checked against the SHA-256 sums in tests/samples.rs; they are not
+distributed with this crate.
 
 ------------------------------------------------------------------------------
 Patents and trademarks
@@ -31,8 +37,9 @@ Patents and trademarks
 DTS Coherent Acoustics was patented by DTS, Inc. This licence grants no
 rights under any patent, and the authors make no claim about whether a
 licence is needed for any use. "DTS" is a trademark of its owner, used only
-to name the format. The DTS-HD extensions (XCh, XXCh, X96, the extension
-substream) are not implemented: a DTS-HD stream decodes as its core.
+to name the format. The lossless extension (XLL) and the low bit-rate
+extension (LBR) are not implemented: a DTS-HD Master Audio stream decodes as
+its lossy core and extensions.
 
 ------------------------------------------------------------------------------
 Third-party components
