@@ -213,6 +213,7 @@ mod tests {
         let hf: Vec<u8> = (0..HF_VQ_VECTORS * HF_VQ_LEN).map(|i| (i * 7) as u8).collect();
         let hfb = HfVqCodebook::from_be_bytes(&hf).unwrap();
         assert_eq!(hfb.element(0, 1), 7.0 / 16.0);
-        assert_eq!(hfb.element(1, 4), ((32 + 4) * 7 % 256) as u8 as i8 as f64 / 16.0);
+        // Vector 1 starts at byte 32: element 4 is byte 36.
+        assert_eq!(hfb.element(1, 4), (36u32 * 7) as u8 as i8 as f64 / 16.0);
     }
 }

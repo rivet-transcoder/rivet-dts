@@ -18,6 +18,20 @@ impl<'a> BitReader<'a> {
         Self { data, pos: 0 }
     }
 
+    /// Bits read so far.
+    pub fn position_bits(&self) -> usize {
+        self.pos
+    }
+
+    /// Skip forward to bit `pos` (never backwards); past the end is an error.
+    pub fn seek_bits(&mut self, pos: usize) -> Result<(), Error> {
+        if pos < self.pos || pos > self.data.len() * 8 {
+            return Err(Error::Invalid("field size points outside its frame"));
+        }
+        self.pos = pos;
+        Ok(())
+    }
+
     /// Bits still available.
     pub fn remaining(&self) -> usize {
         (self.data.len() * 8).saturating_sub(self.pos)

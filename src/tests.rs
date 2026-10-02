@@ -1,6 +1,6 @@
-//! Decoder-level tests. The conformance comparison against libavcodec's
-//! decode of ffmpeg-made vectors lives in `tests/dts_core.rs`
-//! (it needs the fixture files); these cover the frame-level contracts.
+//! Decoder-level tests of the frame-level contracts, on synthetic frames.
+//! Round trips through the encoder are in `tests/encoder_roundtrip.rs`,
+//! public sample streams in `tests/samples.rs`.
 
 use super::*;
 
@@ -111,35 +111,41 @@ fn incompatible_encoder_revisions_are_refused_by_name() {
 }
 
 #[test]
-fn arrangements_without_a_pipeline_layout_are_refused_by_name() {
-    // AMODE 10 = CL + CR + L + R + SL + SR needs XCh.
-    let err = output_layout(10, false).unwrap_err();
-    assert!(err.to_string().contains("XCh"), "{err}");
-    // 3.0 + LFE has no named layout.
-    let err = output_layout(5, true).unwrap_err();
-    assert!(err.to_string().contains("3.1"), "{err}");
-    // L + R + S.
-    assert!(output_layout(6, false).is_err());
-    // And a frame carrying one is refused before any audio is parsed.
+fn arrangements_without_defined_speakers_are_refused_by_name() {
+    // AMODE 10 = CL + CR + L + R + SL + SR: six channels, of which the core
+    // carries five without saying which.
     let mut d = Decoder::new();
     let f = header(1, 15, 2047, 10, 13, 0, 7);
     let err = d.decode(&f).unwrap_err();
     assert!(matches!(err, Error::Unsupported(_)), "{err}");
+    assert!(err.to_string().contains("AMODE 10"), "{err}");
+    assert!(core_speakers(33).unwrap_err().to_string().contains("user-defined"));
 }
 
 #[test]
-fn the_five_one_core_maps_onto_the_family_1_order() {
-    use Slot::*;
-    // Core order is C L R SL SR (+LFE); pipeline order is FL FR FC LFE SL SR.
-    let (layout, slots) = output_layout(9, true).unwrap();
-    assert_eq!(layout.name(), "5.1(side)");
-    assert_eq!(slots, vec![Core(1), Core(2), Core(0), Lfe, Core(3), Core(4)]);
-    let (layout, slots) = output_layout(2, true).unwrap();
-    assert_eq!(layout.name(), "2.1");
-    assert_eq!(slots, vec![Core(0), Core(1), Lfe]);
-    let (layout, slots) = output_layout(0, false).unwrap();
-    assert_eq!(layout.name(), "mono");
-    assert_eq!(slots, vec![Core(0)]);
+fn every_core_arrangement_maps_onto_canonical_order() {
+    use Speaker::*;
+    let layout = |amode: u32, lfe: bool| {
+        let mut s = layout::amode_speakers(amode).unwrap().to_vec();
+        if lfe {
+            s.push(LFE);
+        }
+        Layout::from_speakers(&s)
+    };
+    assert_eq!(layout(9, true), Layout::Surround51Side);
+    assert_eq!(layout(9, true).speakers(), &[FL, FR, FC, LFE, SL, SR]);
+    assert_eq!(layout(2, true), Layout::Stereo21);
+    assert_eq!(layout(0, false), Layout::Mono);
+    assert_eq!(layout(5, true), Layout::Surround31);
+    assert_eq!(layout(6, false), Layout::Surround30Back);
+    assert_eq!(layout(7, true), Layout::Surround41);
+    assert!(matches!(layout(0, true), Layout::Custom(_)));
+    for amode in 0..10 {
+        for lfe in [false, true] {
+            let l = layout(amode, lfe);
+            assert_eq!(l.channels(), AMODE_CHANNELS[amode as usize] + lfe as usize, "AMODE {amode}");
+        }
+    }
 }
 
 #[test]
@@ -147,18 +153,6 @@ fn sum_difference_pairs_follow_amode_channel_order() {
     assert_eq!(sum_diff_pairs(9), (Some((1, 2)), Some((3, 4))), "C L R SL SR");
     assert_eq!(sum_diff_pairs(2), (Some((0, 1)), None), "L R");
     assert_eq!(sum_diff_pairs(0), (None, None));
-}
-
-#[test]
-fn every_layout_has_as_many_speakers_as_slots() {
-    for amode in 0..16 {
-        for lfe in [false, true] {
-            if let Ok((layout, slots)) = output_layout(amode, lfe) {
-                assert_eq!(layout.channels(), slots.len(), "AMODE {amode} lfe {lfe}");
-                assert_eq!(layout.speakers().contains(&Speaker::LFE), lfe, "AMODE {amode}");
-            }
-        }
-    }
 }
 
 #[test]

@@ -147,6 +147,16 @@ pub fn scale_book(shuff: u32) -> Option<&'static Codebook> {
     }
 }
 
+/// X96 `BHUFF96` 0..=6 with `HIGHRESFLAG96K` = 0: A17..G17 (Table 6-7).
+pub fn book_17(bhuff: u32) -> &'static Codebook {
+    [&*A17, &*B17, &*C17, &*D17, &*E17, &*F17, &*G17][bhuff as usize]
+}
+
+/// X96 `BHUFF96` 0..=6 with `HIGHRESFLAG96K` = 1: A33..G33 (Table 6-7).
+pub fn book_33(bhuff: u32) -> &'static Codebook {
+    [&*A33, &*B33, &*C33, &*D33, &*E33, &*F33, &*G33][bhuff as usize]
+}
+
 /// How the eight quantisation indices of one subband subsubframe are coded,
 /// per Table 5-26 and the `nQType` logic of Table 5-29.
 #[derive(Clone, Copy)]
