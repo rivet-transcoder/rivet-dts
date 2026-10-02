@@ -297,8 +297,10 @@ fn parse_header(r: &mut BitReader) -> Result<FrameHeader, Error> {
     })
 }
 
-/// Which extensions a frame carried: decoded ([`CoreInfo::extensions`]) or
-/// present but not decoded ([`CoreInfo::skipped`]).
+/// A set of extensions: which a frame carried, decoded
+/// ([`CoreInfo::extensions`]) or present but not decoded
+/// ([`CoreInfo::skipped`]), and which the decoder is to decode
+/// ([`Decoder::set_extensions`]).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct Extensions {
     /// XCh: the 6.1 back centre (6.4).
@@ -318,6 +320,14 @@ pub struct Extensions {
 }
 
 impl Extensions {
+    /// None: the core alone.
+    pub const NONE: Extensions =
+        Extensions { xch: false, xxch: false, x96: false, xbr: false, exss: false, xll: false, lbr: false };
+    /// Every extension this decoder decodes (XCh, XXCH, X96, XBR and the
+    /// extension substream that carries them; XLL and LBR are not decoded).
+    pub const ALL: Extensions =
+        Extensions { xch: true, xxch: true, x96: true, xbr: true, exss: true, xll: false, lbr: false };
+
     fn any(&self) -> bool {
         self.xch || self.xxch || self.x96 || self.xbr || self.exss || self.xll || self.lbr
     }
@@ -366,7 +376,7 @@ pub struct CoreInfo {
     /// The extensions this frame's output includes.
     pub extensions: Extensions,
     /// Extensions the frame carried that are not in its output (XLL, LBR;
-    /// everything when [`Decoder::set_core_only`] is on).
+    /// whatever [`Decoder::set_extensions`] turned off).
     pub skipped: Extensions,
 }
 
@@ -393,8 +403,9 @@ fn be32(buf: &[u8], off: usize) -> Option<u32> {
 }
 
 /// The length of the DTS packet (one access unit) at the start of `buf`: a
-/// core frame plus any extension substream frames (and padding) that
-/// follow it, or a run of extension substream frames on their own. For
+/// core frame plus any extension substream frames that follow it, or a run
+/// of extension substream frames on their own, and any zero padding after
+/// them. For
 /// splitting a raw `.dts` / `.dtshd` elementary stream into the packets
 /// [`Decoder::decode`] takes.
 pub fn packet_len(buf: &[u8]) -> Result<usize> {
@@ -417,6 +428,11 @@ pub fn packet_len(buf: &[u8]) -> Result<usize> {
         }
         seen_index = Some(index);
         off = at + exss::frame_size(&buf[at..])?;
+    }
+    // Zero padding after the frame (streams padded to a constant frame
+    // size, or DWORD alignment) belongs to it.
+    while off < buf.len() && buf[off] == 0 {
+        off += 1;
     }
     Ok(off.min(buf.len()).max(4))
 }
@@ -531,7 +547,7 @@ pub struct Decoder {
     adpcm_book: Option<Arc<AdpcmCodebook>>,
     hf_book: Option<Arc<HfVqCodebook>>,
     fallback: AdpcmFallback,
-    core_only: bool,
+    enabled: Extensions,
     hf_vq_skipped: bool,
     /// The header of the last frame whose layout was mapped.
     info: Option<CoreInfo>,
@@ -557,7 +573,7 @@ impl Decoder {
             adpcm_book: None,
             hf_book: None,
             fallback: AdpcmFallback::Refuse,
-            core_only: false,
+            enabled: Extensions::ALL,
             hf_vq_skipped: false,
             info: None,
         }
@@ -584,7 +600,15 @@ impl Decoder {
     /// XBR and the extension substream are skipped (and reported in
     /// [`CoreInfo::skipped`]). Off by default.
     pub fn set_core_only(&mut self, core_only: bool) {
-        self.core_only = core_only;
+        self.set_extensions(if core_only { Extensions::NONE } else { Extensions::ALL });
+    }
+
+    /// Choose which extensions to decode (default [`Extensions::ALL`]):
+    /// for example everything but X96, to keep the core's sample rate.
+    /// Turning off `exss` ignores the extension substream (and so its
+    /// XBR, XXCH and X96); a core carried only inside it still decodes.
+    pub fn set_extensions(&mut self, enabled: Extensions) {
+        self.enabled = enabled;
     }
 
     /// Decode a packet: one or more core frames back to back, as Matroska
@@ -887,11 +911,13 @@ impl Decoder {
             .and_then(|(f, fr)| fr.assets.first().filter(|a| a.coding_mode == 0).map(|a| (*f, a.clone())));
 
         let mut used = Extensions::default();
-        if !self.core_only {
-            used.exss = found.exss;
+        let en = self.enabled;
+        let asset0 = asset0.filter(|_| en.exss);
+        {
+            used.exss = found.exss && en.exss;
             let ext_ctx = &ctx;
             // XCh.
-            if let Some(&(_, at)) = in_core.iter().find(|(s, _)| *s == ext::SYNC_XCH) {
+            if let Some(&(_, at)) = in_core.iter().find(|(s, _)| *s == ext::SYNC_XCH).filter(|_| en.xch) {
                 let mut xr = BitReader::new(&core[at..]);
                 let lower_subs: Vec<usize> = (0..n).map(|i| p.subs[i]).collect();
                 let (_fsize, xp) = ext::parse_xch_header(&mut xr, h.cpf, &lower_subs)?;
@@ -931,7 +957,7 @@ impl Decoder {
                 .or_else(|| {
                     asset0.as_ref().and_then(|(f, a)| a.component(exss::mask::EXSS_XXCH).map(|rg| &f[rg]))
                 });
-            if let Some(data) = xxch_bytes {
+            if let Some(data) = xxch_bytes.filter(|_| en.xxch) {
                 let xh = ext::parse_xxch_header(data)?;
                 // The core's speakers by the XXCH core activity mask.
                 let core_bits: Vec<u32> = (0..32).filter(|b| (xh.core_mask >> b) & 1 == 1 && *b != 5).collect();
@@ -999,7 +1025,7 @@ impl Decoder {
             // core's subband samples added into the lower 32 bands.
             let x96_core = in_core.iter().find(|(s, _)| *s == ext::SYNC_X96).map(|&(_, at)| &core[at..]);
             let x96_exss = asset0.as_ref().and_then(|(f, a)| a.component(exss::mask::EXSS_X96).map(|rg| &f[rg]));
-            if let Some(data) = x96_exss.or(x96_core) {
+            if let Some(data) = x96_exss.or(x96_core).filter(|_| en.x96) {
                 let in_exss = x96_exss.is_some();
                 let mut xr = BitReader::new(data);
                 if xr.bits(32)? != ext::SYNC_X96 {
@@ -1087,6 +1113,7 @@ impl Decoder {
             // XBR from asset 0: residuals into the channel sets, in order
             // (core, then XCh/XXCH channels).
             if let Some((f, a)) = &asset0
+                && en.xbr
                 && let Some(rg) = a.component(exss::mask::EXSS_XBR)
             {
                 let mut list: Vec<ext::XbrTarget> = match &mut x96 {
@@ -1234,7 +1261,7 @@ impl Decoder {
         info.sample_rate = out_rate;
         info.extensions = used;
         info.skipped = skipped;
-        debug_assert!(!info.extensions.any() || !self.core_only);
+        debug_assert!(!info.extensions.any() || self.enabled.any());
         self.info = Some(info);
         Ok(Frame { samples: out, sample_rate: out_rate, channels: nout, layout })
     }

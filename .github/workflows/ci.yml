@@ -32,6 +32,29 @@ jobs:
       - name: Tests with overflow checks (debug)
         run: cargo test
 
+  # The decoder on public DTS, DTS-ES, 96/24, DTS-HD High Resolution and
+  # Master Audio streams (tests/samples.rs). They are fetched as data from
+  # a public sample archive and checked against their SHA-256; no other
+  # implementation is involved. Without the files those tests skip, so this
+  # job fetches them and requires them.
+  samples:
+    name: public sample streams
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: samples
+          key: dts-samples-${{ hashFiles('tools/fetch_samples.sh') }}
+      - run: bash tools/fetch_samples.sh samples
+      - name: Tests
+        run: cargo test --release --test samples -- --nocapture
+        env:
+          DTS_SAMPLES_DIR: samples
+          DTS_REQUIRE_SAMPLES: "1"
+
   msrv:
     name: MSRV (1.99)
     runs-on: ubuntu-latest
