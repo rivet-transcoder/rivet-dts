@@ -180,6 +180,116 @@ impl LfeInterp {
     }
 }
 
+/// Subbands of the X96 synthesis bank.
+pub const NUM_SUBBANDS_64: usize = 64;
+
+/// The X96 64-band synthesis bank (6.2.3, prototype D.9).
+///
+/// The specification prints the 1 024-tap prototype and says the bank is a
+/// cosine-modulated one obtained by modulating it, but gives no structure
+/// for it (C.3.6 covers only the 32-band one). It is written here in direct
+/// form from the 32-band bank's own direct form: C.3.6 with its `rScale` is
+/// exactly `y[n] = Σ_k x_k · 64 · s_k · g[n] · cos(π/32 · (k+½) · (n+16.5))`
+/// with `s_k` = sign(cos((2k+1)π/4)) and `g` the D.8 prototype with every
+/// second block of 64 taps negated back (verified tap for tap by
+/// `c36_is_the_cosine_modulated_bank` below). The 64-band bank is the same
+/// formula with 64 for 32 (`cos(π/64 · (k+½) · (n+32.5))`, gain 128, D.9
+/// with every second block of 128 taps negated back, as 6.2.4.7 describes)
+/// — the generalisation under which, as 6.2.3 requires, core subband
+/// samples placed in the lower 32 bands synthesise to the core's PCM
+/// interpolated to the doubled rate (`x96_bank_interpolates_the_core_bank`).
+pub struct Qmf64 {
+    /// The last 16 modulated vectors, newest first: `v[i][j]`, j < 128,
+    /// with `v[j + 128] = −v[j]`.
+    v: Vec<[f64; 128]>,
+}
+
+/// `s_k · cos(π/64 · (k+½) · (j+32.5))` for j < 128, k < 64.
+static COS_MOD_64: LazyLock<Vec<[f64; 64]>> = LazyLock::new(|| {
+    use std::f64::consts::PI;
+    (0..128)
+        .map(|j| {
+            std::array::from_fn(|k| {
+                let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 { 1.0 } else { -1.0 };
+                s * (PI / 64.0 * (k as f64 + 0.5) * (j as f64 + 32.5)).cos()
+            })
+        })
+        .collect()
+});
+
+/// D.9 with the printed sign changes undone, × 128.
+static PROTO_64: LazyLock<[f64; 1024]> = LazyLock::new(|| {
+    std::array::from_fn(|n| {
+        let g = tables::X96_QMF_FIR[n];
+        128.0 * if (n / 128) % 2 == 1 { -g } else { g }
+    })
+});
+
+impl Default for Qmf64 {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Qmf64 {
+    pub fn new() -> Self {
+        Self { v: vec![[0.0; 128]; 16] }
+    }
+
+    /// 64 subband samples in, 64 PCM samples (at twice the core rate) out.
+    pub fn synthesize(&mut self, xin: &[f64; NUM_SUBBANDS_64], out: &mut [f64; 64]) {
+        let cm = &*COS_MOD_64;
+        let mut v = [0.0f64; 128];
+        for (j, vj) in v.iter_mut().enumerate() {
+            *vj = cm[j].iter().zip(xin).map(|(c, x)| c * x).sum();
+        }
+        self.v.rotate_right(1);
+        self.v[0] = v;
+        let g = &*PROTO_64;
+        for (t, o) in out.iter_mut().enumerate() {
+            let mut acc = 0.0;
+            for (i, vi) in self.v.iter().enumerate() {
+                let n = t + 64 * i;
+                let val = if (n / 128) % 2 == 1 { -vi[n % 128] } else { vi[n % 128] };
+                acc += g[n] * val;
+            }
+            *o = acc;
+        }
+    }
+}
+
+/// Table 6-11: the X96 LFE 2× interpolation filter, scaled by 2.
+#[allow(clippy::excessive_precision)] // as printed
+const LFE_2X: [f64; 5] = [
+    1.2553677676342990e-1,
+    4.9999913800216800e-1,
+    7.4892817046880420e-1,
+    4.9999913800216800e-1,
+    1.2553677676342990e-1,
+];
+
+/// The X96 LFE 2× interpolator (6.2.4.7): zero-stuff, then Table 6-11.
+#[derive(Default)]
+pub struct Lfe2x {
+    /// The last two input samples, newest first.
+    hist: [f64; 2],
+}
+
+impl Lfe2x {
+    /// Each input sample yields two output samples, appended to `out`.
+    pub fn interpolate(&mut self, input: &[f64], out: &mut Vec<f64>) {
+        for &x in input {
+            // Upsampled u = [x, 0, h0, 0, h1, …]: even output taps hit
+            // samples, odd ones the zeros.
+            let even = LFE_2X[0] * x + LFE_2X[2] * self.hist[0] + LFE_2X[4] * self.hist[1];
+            let odd = LFE_2X[1] * x + LFE_2X[3] * self.hist[0];
+            out.push(even);
+            out.push(odd);
+            self.hist = [x, self.hist[0]];
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -240,6 +350,161 @@ mod tests {
             for v in tail {
                 assert!((v - 500.0).abs() < 0.5, "factor {factor}: {v}");
             }
+        }
+    }
+
+    /// The D.8 prototype with the signs of every second block of 64 taps
+    /// negated back, as `QMFInterpolation` uses it implicitly.
+    fn prototype_32(perfect: bool) -> Vec<f64> {
+        let c: &[f32; 512] = if perfect { &tables::QMF_FIR_PERFECT } else { &tables::QMF_FIR_NON_PERFECT };
+        c.iter().enumerate().map(|(n, &v)| if (n / 64) % 2 == 1 { -(v as f64) } else { v as f64 }).collect()
+    }
+
+    /// Spec-derived float reference: C.3.6 is the cosine-modulated bank
+    /// `f_k[n] = 64 · s_k · g[n] · cos(π/32 · (k+½) · (n+16.5))`. Every
+    /// subband's impulse response through [`Qmf`] must equal it, for both
+    /// prototypes, and a random input must equal the direct convolution.
+    #[test]
+    fn c36_is_the_cosine_modulated_bank() {
+        use std::f64::consts::PI;
+        for perfect in [false, true] {
+            let g = prototype_32(perfect);
+            let f = |k: usize, n: usize| {
+                let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 { 1.0 } else { -1.0 };
+                64.0 * s * g[n] * (PI / 32.0 * (k as f64 + 0.5) * (n as f64 + 16.5)).cos()
+            };
+            for k in 0..32 {
+                let mut q = Qmf::new();
+                let mut out = [0.0; 32];
+                for m in 0..17 {
+                    let mut xin = [0.0; 32];
+                    if m == 0 {
+                        xin[k] = 1.0;
+                    }
+                    q.synthesize(&xin, perfect, &mut out);
+                    for (t, y) in out.iter().enumerate() {
+                        let n = 32 * m + t;
+                        let want = if n < 512 { f(k, n) } else { 0.0 };
+                        assert!((y - want).abs() < 1e-9, "perfect={perfect} k={k} n={n}: {y} vs {want}");
+                    }
+                }
+            }
+            // Random subband input against the direct convolution.
+            let mut seed = 12345u64;
+            let mut rnd = || {
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                ((seed >> 11) as f64 / (1u64 << 53) as f64) * 2.0 - 1.0
+            };
+            let x: Vec<[f64; 32]> = (0..24).map(|_| std::array::from_fn(|_| rnd())).collect();
+            let mut q = Qmf::new();
+            let mut got = Vec::new();
+            for xm in &x {
+                let mut out = [0.0; 32];
+                q.synthesize(xm, perfect, &mut out);
+                got.extend_from_slice(&out);
+            }
+            for (n, y) in got.iter().enumerate() {
+                let mut want = 0.0;
+                for (m, xm) in x.iter().enumerate() {
+                    if n >= 32 * m && n - 32 * m < 512 {
+                        want += (0..32).map(|k| xm[k] * f(k, n - 32 * m)).sum::<f64>();
+                    }
+                }
+                assert!((y - want).abs() < 1e-9, "perfect={perfect} n={n}");
+            }
+        }
+    }
+
+    /// The 64-band bank against its float reference (direct convolution of
+    /// the D.9 prototype modulated as documented on [`Qmf64`]).
+    #[test]
+    fn qmf64_is_the_direct_form() {
+        use std::f64::consts::PI;
+        let g: Vec<f64> = tables::X96_QMF_FIR
+            .iter()
+            .enumerate()
+            .map(|(n, &v)| if (n / 128) % 2 == 1 { -v } else { v })
+            .collect();
+        let f = |k: usize, n: usize| {
+            let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 { 1.0 } else { -1.0 };
+            128.0 * s * g[n] * (PI / 64.0 * (k as f64 + 0.5) * (n as f64 + 32.5)).cos()
+        };
+        let x: Vec<[f64; 64]> = (0..20)
+            .map(|m| std::array::from_fn(|k| (((m * 64 + k) * 2654435761usize) % 1000) as f64 / 500.0 - 1.0))
+            .collect();
+        let mut q = Qmf64::new();
+        let mut got = Vec::new();
+        for xm in &x {
+            let mut out = [0.0; 64];
+            q.synthesize(xm, &mut out);
+            got.extend_from_slice(&out);
+        }
+        for (n, y) in got.iter().enumerate() {
+            let mut want = 0.0;
+            for (m, xm) in x.iter().enumerate() {
+                if n >= 64 * m && n - 64 * m < 1024 {
+                    want += (0..64).map(|k| xm[k] * f(k, n - 64 * m)).sum::<f64>();
+                }
+            }
+            assert!((y - want).abs() < 1e-9, "n={n}: {y} vs {want}");
+        }
+    }
+
+    /// 6.2.3: core subband samples in the lower 32 bands of the 64-band bank
+    /// (upper bands zero) give the 32-band bank's output interpolated to the
+    /// doubled rate. A slowly varying signal in one subband: 64-band output
+    /// sample j must match the 32-band output band-limited-interpolated at
+    /// core time (j − ½)/2 (the pair is offset by half a high-rate sample,
+    /// the difference of the prototypes' group delays).
+    #[test]
+    fn x96_bank_interpolates_the_core_bank() {
+        use std::f64::consts::PI;
+        for k in [0usize, 3, 10, 16, 22] {
+            let (mut q32, mut q64) = (Qmf::new(), Qmf64::new());
+            let (mut y32, mut y64) = (Vec::new(), Vec::new());
+            for m in 0..80 {
+                let v = (m as f64 * 0.3).sin() * 1000.0;
+                let mut x32 = [0.0; 32];
+                x32[k] = v;
+                let mut x64 = [0.0; 64];
+                x64[k] = v;
+                let mut o32 = [0.0; 32];
+                let mut o64 = [0.0; 64];
+                q32.synthesize(&x32, false, &mut o32);
+                q64.synthesize(&x64, &mut o64);
+                y32.extend_from_slice(&o32);
+                y64.extend_from_slice(&o64);
+            }
+            // Hann-windowed sinc interpolation of the core output, ±128 taps.
+            let interp = |t: f64| {
+                let c = t.floor() as isize;
+                (c - 128..=c + 129)
+                    .map(|m| {
+                        let d = t - m as f64;
+                        let sinc = if d.abs() < 1e-12 { 1.0 } else { (PI * d).sin() / (PI * d) };
+                        let w = 0.5 + 0.5 * (PI * d / 130.0).cos();
+                        y32[m as usize] * sinc * w
+                    })
+                    .sum::<f64>()
+            };
+            let (mut err, mut sig) = (0.0, 0.0);
+            for j in 1200..3600 {
+                let want = interp((j as f64 - 0.5) / 2.0);
+                err += (y64[j] - want).powi(2);
+                sig += want.powi(2);
+            }
+            let snr = 10.0 * (sig / err).log10();
+            assert!(snr > 40.0, "band {k}: 64-band vs interpolated 32-band SNR {snr:.1} dB");
+        }
+    }
+
+    #[test]
+    fn lfe_2x_dc_gain_is_unity() {
+        let mut l = Lfe2x::default();
+        let mut out = Vec::new();
+        l.interpolate(&[100.0; 8], &mut out);
+        for v in &out[4..] {
+            assert!((v - 100.0).abs() < 0.01, "{v}");
         }
     }
 }
