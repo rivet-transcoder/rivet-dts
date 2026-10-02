@@ -167,3 +167,96 @@ fn a_refused_frame_still_reports_its_layout() {
     assert_eq!((info.amode, info.lfe, info.sample_rate), (9, true, 48_000));
     assert!(!d.hf_vq_skipped());
 }
+
+/// D.10.2 path: with a supplied code book, a VQ subband is `SCALES ×
+/// element` for the subframe's samples (Table 5-29); without one it stays
+/// silent and the decoder says so.
+#[test]
+fn hf_vq_subbands_use_a_supplied_book() {
+    let entries: Vec<[i8; vq::HF_VQ_LEN]> =
+        (0..vq::HF_VQ_VECTORS).map(|v| std::array::from_fn(|m| ((v * 3 + m * 5) % 200) as i8 - 100)).collect();
+    let book = HfVqCodebook::from_entries(&entries).unwrap();
+    // One channel: SUBS 4, VQSUB 2 → subbands 2 and 3 are VQ-coded.
+    let mut bits: Vec<u8> = Vec::new();
+    let mut push = |v: u32, n: usize| {
+        for i in (0..n).rev() {
+            bits.push(((v >> i) & 1) as u8);
+        }
+    };
+    push(2, 5); // SUBS = 4
+    push(1, 5); // VQSUB = 2
+    push(0, 3 + 2 + 3); // JOINX THUFF SHUFF
+    push(5, 3); // BHUFF linear 4-bit
+    push(0, 1 + 4 * 2 + 5 * 3); // SEL all Huffman …
+    push(0, 2 * 10); // … so ten ADJ indices
+    push(777, 10); // VQ index, subband 2
+    push(5, 10); // VQ index, subband 3
+    let bytes = pack(&bits, bits.len().div_ceil(8) as u32);
+    let mut r = bits::BitReader::new(&bytes);
+    let p = core::parse_coding_params(&mut r, 1, &[]).unwrap();
+    assert_eq!((p.subs[0], p.vqsub[0]), (4, 2));
+    let mut si = core::SideInfo {
+        ssc: 2,
+        pmode: [[false; 32]; 8],
+        pvq: [[0; 32]; 8],
+        abits: [[0; 32]; 8],
+        tmode: [[0; 32]; 8],
+        scales: [[[0.0; 2]; 32]; 8],
+        join_scales: [[0.0; 32]; 8],
+    };
+    si.scales[0][2][0] = 1000.0;
+    si.scales[0][3][0] = 10.0;
+    let mut bufs = vec![core::ChannelBuf::new(32, 16)];
+    let mut skipped = false;
+    core::read_hf_vq(&mut r, &p, &si, 0, &mut bufs, Some(&book), &mut skipped).unwrap();
+    assert!(!skipped);
+    for m in 0..16 {
+        assert_eq!(bufs[0].s[2][m], 1000.0 * entries[777][m] as f64 / 16.0);
+        assert_eq!(bufs[0].s[3][m], 10.0 * entries[5][m] as f64 / 16.0);
+    }
+    let mut r = bits::BitReader::new(&bytes);
+    let p = core::parse_coding_params(&mut r, 1, &[]).unwrap();
+    let mut bufs = vec![core::ChannelBuf::new(32, 16)];
+    core::read_hf_vq(&mut r, &p, &si, 0, &mut bufs, None, &mut skipped).unwrap();
+    assert!(skipped);
+    assert!(bufs[0].s.iter().flatten().all(|v| *v == 0.0));
+}
+
+/// D.9 is a linear-phase low-pass prototype once its printed sign changes
+/// (every second block of 128 taps, 6.2.4.7) are undone, with unit DC gain.
+#[test]
+fn x96_prototype_is_linear_phase_with_unit_gain() {
+    let g: Vec<f64> =
+        tables::X96_QMF_FIR.iter().enumerate().map(|(n, &v)| if (n / 128) % 2 == 1 { -v } else { v }).collect();
+    for n in 0..512 {
+        assert_eq!(g[n], g[1023 - n], "tap {n}");
+    }
+    assert!((g.iter().sum::<f64>() - 1.0).abs() < 1e-6);
+    // The peak is at the centre.
+    assert_eq!(g.iter().cloned().fold(0.0, f64::max), g[511]);
+}
+
+/// D.11: the DmixTable entries are 2^15 · 10^(dB/20) on the stated grid
+/// (−60…−30 dB in 0.5 dB, −29.75…−15 in 0.25, −14.875…0 in 0.125), and
+/// InvDmixTbl is 2^16 over the same gain — except that the "−3 dB" entry
+/// is the exact 1/√2 (0.707107, as printed), the downmix gain of XCh.
+#[test]
+fn downmix_table_follows_its_grid() {
+    for i in 0..241usize {
+        let db = if i <= 60 {
+            -60.0 + 0.5 * i as f64
+        } else if i <= 120 {
+            -30.0 + 0.25 * (i - 60) as f64
+        } else {
+            -15.0 + 0.125 * (i - 120) as f64
+        };
+        let gain = if db == -3.0 { std::f64::consts::FRAC_1_SQRT_2 } else { 10f64.powf(db / 20.0) };
+        let want = 32768.0 * gain;
+        assert!((tables::DMIX_TABLE[i] as f64 - want).abs() <= 1.0, "index {i}: {} vs {want:.1}", tables::DMIX_TABLE[i]);
+        if i >= 40 {
+            let inv = 65536.0 / gain;
+            let got = tables::INV_DMIX_TABLE[i - 40] as f64;
+            assert!((got - inv).abs() / inv < 1e-4, "inverse index {i}: {got} vs {inv:.1}");
+        }
+    }
+}
