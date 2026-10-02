@@ -69,6 +69,7 @@ mod bits;
 mod huffman;
 mod synth;
 pub mod vq;
+pub mod encoder;
 pub mod tables;
 #[cfg(test)]
 mod tests;
