@@ -29,6 +29,13 @@ const ADJ_TABLE: [f64; 4] = [1.0, 1.125, 1.25, 1.4375];
 #[derive(Clone)]
 pub(crate) struct CodingParams {
     pub n: usize,
+    /// Index of this set's first channel in the frame's channel numbering
+    /// (core channels first, then the extension channels in order): `JOINX`
+    /// counts in that numbering, so an extension channel may take its
+    /// joint-intensity source from the core (6.4.3, 6.5.3).
+    pub base: usize,
+    /// `nSUBS` of the channels below `base`.
+    pub lower_subs: Vec<usize>,
     pub subs: [usize; MAX_SET],
     pub vqsub: [usize; MAX_SET],
     pub joinx: [usize; MAX_SET],
@@ -41,13 +48,23 @@ pub(crate) struct CodingParams {
     pub adj: [[f64; 10]; MAX_SET],
 }
 
-/// Read `SUBS` … `ADJ` for `n` channels.
-pub(crate) fn parse_coding_params(r: &mut BitReader, n: usize) -> Result<CodingParams, Error> {
+impl CodingParams {
+    /// `nSUBS` of channel `src` in the frame numbering.
+    pub fn source_subs(&self, src: usize) -> usize {
+        if src < self.base { self.lower_subs[src] } else { self.subs[src - self.base] }
+    }
+}
+
+/// Read `SUBS` … `ADJ` for `n` channels numbered from `lower_subs.len()`.
+pub(crate) fn parse_coding_params(r: &mut BitReader, n: usize, lower_subs: &[usize]) -> Result<CodingParams, Error> {
     if n == 0 || n > MAX_SET {
         return Err(Error::Invalid("channel count of a coding set out of range"));
     }
+    let base = lower_subs.len();
     let mut p = CodingParams {
         n,
+        base,
+        lower_subs: lower_subs.to_vec(),
         subs: [0; MAX_SET],
         vqsub: [0; MAX_SET],
         joinx: [0; MAX_SET],
@@ -71,7 +88,7 @@ pub(crate) fn parse_coding_params(r: &mut BitReader, n: usize) -> Result<CodingP
     }
     for ch in 0..n {
         p.joinx[ch] = r.bits(3)? as usize;
-        if p.joinx[ch] > ch {
+        if p.joinx[ch] > base + ch {
             return Err(Error::Invalid("JOINX source channel is not a lower channel"));
         }
     }
@@ -263,7 +280,7 @@ pub(crate) fn parse_side_info(r: &mut BitReader, p: &CodingParams, ssc: usize) -
     for ch in 0..p.n {
         if p.joinx[ch] > 0 {
             let src = p.joinx[ch] - 1;
-            si.join_scales[ch] = read_join_scales(r, join_shuff[ch], p.subs[ch], p.subs[src])?;
+            si.join_scales[ch] = read_join_scales(r, join_shuff[ch], p.subs[ch], p.source_subs(src))?;
         }
     }
     Ok(si)
@@ -445,14 +462,24 @@ pub(crate) fn finish_estimates(
     }
 }
 
-/// Joint intensity coding (Annex C.3.4) over blocks `t0..t0 + n`.
-pub(crate) fn apply_joint(p: &CodingParams, si: &SideInfo, bufs: &mut [ChannelBuf], t0: usize, n: usize) {
+/// Joint intensity coding (Annex C.3.4) over blocks `t0..t0 + n`; `lower`
+/// are the frame's channels below the set (sources an extension channel
+/// may name).
+pub(crate) fn apply_joint(
+    p: &CodingParams,
+    si: &SideInfo,
+    bufs: &mut [ChannelBuf],
+    lower: &[&ChannelBuf],
+    t0: usize,
+    n: usize,
+) {
     for ch in 0..p.n {
         if p.joinx[ch] > 0 {
             let src = p.joinx[ch] - 1;
-            for sb in p.subs[ch]..p.subs[src] {
+            for sb in p.subs[ch]..p.source_subs(src) {
                 for s in t0..t0 + n {
-                    bufs[ch].s[sb][s] = si.join_scales[ch][sb] * bufs[src].s[sb][s];
+                    let v = if src < p.base { lower[src].s[sb][s] } else { bufs[src - p.base].s[sb][s] };
+                    bufs[ch].s[sb][s] = si.join_scales[ch][sb] * v;
                 }
             }
         }

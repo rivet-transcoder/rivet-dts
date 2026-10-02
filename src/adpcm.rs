@@ -104,14 +104,20 @@ impl PredictorState {
         let residual: Vec<f64> = frame[t0..].to_vec();
         self.inverse(sb, &c, frame, t0);
         // A mismatched predictor on a tonal subband can ring far above the
-        // signal it stands in for: if the reconstruction comes out more
-        // than 12 dB above the history, keep the residual alone.
+        // signal it stands in for: hold the reconstruction to the level of
+        // the history (or of the residual, if that is louder).
         let energy = |v: &[f64]| v.iter().map(|x| x * x).sum::<f64>() / v.len().max(1) as f64;
-        let limit = 16.0 * energy(&hist).max(energy(&residual));
+        let limit = energy(&hist).max(energy(&residual));
         let e = energy(&frame[t0..]);
-        if !e.is_finite() || e > limit {
+        if !e.is_finite() {
             frame[t0..].copy_from_slice(&residual);
             return [0.0; ORDER];
+        }
+        if e > limit {
+            let g = (limit / e).sqrt();
+            for v in &mut frame[t0..] {
+                *v *= g;
+            }
         }
         c
     }

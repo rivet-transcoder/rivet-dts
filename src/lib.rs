@@ -273,7 +273,7 @@ fn parse_header(r: &mut BitReader) -> Result<FrameHeader, Error> {
     if channels != AMODE_CHANNELS[amode as usize] {
         return Err(Error::Invalid("PCHS disagrees with AMODE"));
     }
-    let params = core::parse_coding_params(r, channels)?;
+    let params = core::parse_coding_params(r, channels, &[])?;
     if cpf {
         let _ahcrc = r.bits(16)?;
     }
@@ -775,7 +775,7 @@ impl Decoder {
                 core::read_subsubframe(&mut r, p, &si, ssf, t0 + 8 * ssf, &ctx, &mut bufs, &mut pred)?;
             }
             core::finish_estimates(p, &si, t0, 8 * ssc, &ctx, &mut bufs, &mut pred);
-            core::apply_joint(p, &si, &mut bufs, t0, 8 * ssc);
+            core::apply_joint(p, &si, &mut bufs, &[], t0, 8 * ssc);
             // Sum/difference decoding (Annex C.3.5); AMODE 3 is coded that
             // way by definition.
             let mut pairs = Vec::new();
@@ -881,7 +881,8 @@ impl Decoder {
             // XCh.
             if let Some(&(_, at)) = in_core.iter().find(|(s, _)| *s == ext::SYNC_XCH) {
                 let mut xr = BitReader::new(&core[at..]);
-                let (_fsize, xp) = ext::parse_xch_header(&mut xr, h.cpf)?;
+                let lower_subs: Vec<usize> = (0..n).map(|i| p.subs[i]).collect();
+                let (_fsize, xp) = ext::parse_xch_header(&mut xr, h.cpf, &lower_subs)?;
                 let mut xb: Vec<ChannelBuf> = (0..xp.n).map(|_| ChannelBuf::new(NSB, blocks)).collect();
                 let base = 0;
                 let mut xpred: Vec<adpcm::PredictorState> =
@@ -889,7 +890,8 @@ impl Decoder {
                 for pr in &mut xpred {
                     pr.begin_frame(h.hflag);
                 }
-                ext::decode_set_subframes(&mut xr, &xp, &cc, ext_ctx, &mut xb, &mut xpred, &mut hf_skipped, " of XCh")?;
+                let lower: Vec<&ChannelBuf> = channels.iter().map(|c| &c.buf).collect();
+                ext::decode_set_subframes(&mut xr, &xp, &lower, &cc, ext_ctx, &mut xb, &mut xpred, &mut hf_skipped, " of XCh")?;
                 if xp.n != 1 {
                     return Err(Error::Unsupported(format!("XCh with {} channels (only the back centre is defined)", xp.n)));
                 }
@@ -927,10 +929,12 @@ impl Decoder {
                     core_lfe_mask_ok = false;
                 }
                 let mut next_state = channels.iter().filter(|c| matches!(c.state, StateId::Ext(_))).count();
+                let mut lower_subs: Vec<usize> = (0..n).map(|i| p.subs[i]).collect();
+                lower_subs.extend(std::iter::repeat_n(0, channels.len() - n));
                 for &(s0, s1) in &xh.sets {
                     let set_bytes = &data[s0..s1];
                     let mut xr = BitReader::new(set_bytes);
-                    let (set, hsize) = ext::parse_xxch_set_header(&mut xr, set_bytes, &xh)?;
+                    let (set, hsize) = ext::parse_xxch_set_header(&mut xr, set_bytes, &xh, &lower_subs)?;
                     xr.seek_bits(hsize * 8)?;
                     let k = set.params.n;
                     let mut xb: Vec<ChannelBuf> = (0..k).map(|_| ChannelBuf::new(NSB, blocks)).collect();
@@ -939,7 +943,9 @@ impl Decoder {
                     for pr in &mut xpred {
                         pr.begin_frame(h.hflag);
                     }
-                    ext::decode_set_subframes(&mut xr, &set.params, &cc, ext_ctx, &mut xb, &mut xpred, &mut hf_skipped, " of XXCH")?;
+                    let lower: Vec<&ChannelBuf> = channels.iter().map(|c| &c.buf).collect();
+                    ext::decode_set_subframes(&mut xr, &set.params, &lower, &cc, ext_ctx, &mut xb, &mut xpred, &mut hf_skipped, " of XXCH")?;
+                    lower_subs.extend_from_slice(&set.params.subs[..k]);
                     let first = channels.len();
                     for (i, (buf, pr)) in xb.into_iter().zip(xpred).enumerate() {
                         let speaker = layout::xxch_mask_speaker(set.channel_bits[i])

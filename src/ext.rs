@@ -61,6 +61,7 @@ pub(crate) fn check_prediction(predicted: usize, ctx: &AudioCtx, what: &str) -> 
 pub(crate) fn decode_set_subframes(
     r: &mut BitReader,
     p: &CodingParams,
+    lower: &[&ChannelBuf],
     cc: &CoreFrameCtx,
     ctx: &AudioCtx,
     bufs: &mut [ChannelBuf],
@@ -80,7 +81,7 @@ pub(crate) fn decode_set_subframes(
             core::read_subsubframe(r, p, &si, ssf, t0 + 8 * ssf, ctx, bufs, pred)?;
         }
         core::finish_estimates(p, &si, t0, 8 * ssc, ctx, bufs, pred);
-        core::apply_joint(p, &si, bufs, t0, 8 * ssc);
+        core::apply_joint(p, &si, bufs, lower, t0, 8 * ssc);
         t0 += 8 * ssc;
     }
     Ok(())
@@ -88,14 +89,14 @@ pub(crate) fn decode_set_subframes(
 
 /// The XCh frame header and audio header (Tables 6-17, 6-18), from the
 /// sync word: `(XChFSIZE, channel count, coding params)`.
-pub(crate) fn parse_xch_header(r: &mut BitReader, cpf: bool) -> Result<(usize, CodingParams), Error> {
+pub(crate) fn parse_xch_header(r: &mut BitReader, cpf: bool, lower_subs: &[usize]) -> Result<(usize, CodingParams), Error> {
     if r.bits(32)? != SYNC_XCH {
         return Err(Error::Invalid("XCh sync word"));
     }
     let fsize = r.bits(10)? as usize;
     let _amode = r.bits(4)?;
     let n = r.bits(3)? as usize + 1;
-    let p = core::parse_coding_params(r, n)?;
+    let p = core::parse_coding_params(r, n, lower_subs)?;
     if cpf {
         let _ahcrc = r.bits(16)?;
     }
@@ -176,6 +177,7 @@ pub(crate) fn parse_xxch_set_header(
     r: &mut BitReader,
     set_bytes: &[u8],
     h: &XxchHeader,
+    lower_subs: &[usize],
 ) -> Result<(XxchSet, usize), Error> {
     let start = r.position_bits();
     let header_size = r.bits(7)? as usize + 1;
@@ -211,7 +213,7 @@ pub(crate) fn parse_xxch_set_header(
             downmix = Some((coeffs, scale));
         }
     }
-    let params = core::parse_coding_params(r, n)?;
+    let params = core::parse_coding_params(r, n, lower_subs)?;
     // Skip the reserved field and alignment to the declared header size.
     let used = (r.position_bits() - start).div_ceil(8);
     if used > header_size {

@@ -160,8 +160,9 @@ pub(crate) fn parse(buf: &[u8]) -> Result<ExssFrame, Error> {
     for &asize in &sizes {
         let start = r.position_bits();
         let desc_size = r.bits(9)? as usize + 1;
-        let mut a = parse_asset(&mut r, static_fields, mix_enabled, &mix_out_ch, bf, duration)?;
-        r.seek_bits(start + desc_size * 8)?;
+        let end = start + desc_size * 8;
+        let mut a = parse_asset(&mut r, end, static_fields, mix_enabled, &mix_out_ch, bf, duration)?;
+        r.seek_bits(end)?;
         // Components follow one another in mask-bit order (Table 7-15),
         // inside this asset's nuAssetFsize bytes.
         let mut off = data_off;
@@ -180,9 +181,11 @@ pub(crate) fn parse(buf: &[u8]) -> Result<ExssFrame, Error> {
     Ok(ExssFrame { index, size, duration, assets, bits4fsize: bf })
 }
 
-/// One audio asset descriptor; `components` come back as `(bit, 0..len)`.
+/// One audio asset descriptor ending at bit `end`; `components` come back
+/// as `(bit, 0..len)`.
 fn parse_asset(
     r: &mut BitReader,
+    end: usize,
     static_fields: bool,
     mix_enabled: bool,
     mix_out_ch: &[u32],
@@ -372,8 +375,12 @@ fn parse_asset(
             }
         }
     }
-    let _secondary = r.flag()?;
-    if r.flag()? {
+    // The last two flags came with later revisions of the format: streams
+    // made before them end the descriptor here (its size says so).
+    if r.position_bits() < end {
+        let _secondary = r.flag()?;
+    }
+    if r.position_bits() < end && r.flag()? {
         r.bits(4)?;
         if let Some(d) = duration {
             for _ in 0..d / 256 {
