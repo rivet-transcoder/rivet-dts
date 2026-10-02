@@ -12,7 +12,7 @@ authors = ["Ely Erin Fox"]
 description = "A DTS Coherent Acoustics core decoder in Rust, written from ETSI TS 102 114: no C, no system libraries, no build script. Mono to 5.1 at up to 48 kHz; DTS-HD tracks decode as their core. rivet's DTS decoder. Imported as `dts`."
 keywords = ["dts", "dca", "audio", "decoder", "codec"]
 categories = ["multimedia::audio", "multimedia::encoding"]
-exclude = [".github/", "docs/", "fuzz/", "tools/"]
+exclude = [".github/", "tools/"]
 
 [lib]
 name = "dts"
