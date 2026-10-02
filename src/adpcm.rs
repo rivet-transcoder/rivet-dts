@@ -24,12 +24,18 @@ pub enum AdpcmFallback {
     /// the stream does not determine.
     #[default]
     Refuse,
-    /// Decode the frame, replacing each transmitted predictor by one
-    /// estimated from the subband's own reconstructed history (4th-order
-    /// autocorrelation LPC over the last 32 samples, bandwidth-expanded).
-    /// ADPCM is only used by encoders on strongly predictable (tonal)
-    /// subbands, where such an estimate is close; the result is an
-    /// approximation, not the decoded stream, and [`Decoder::adpcm_estimated`](crate::Decoder::adpcm_estimated)
+    /// Decode the frame anyway, replacing each transmitted predictor by
+    /// one estimated from the subband's own reconstructed history
+    /// (covariance-method LPC over its last 32 samples), with a guard that
+    /// falls back to the bare residual when the result rings. This is
+    /// concealment, not decoding: a predicted subband is typically tonal,
+    /// and a tonal residual is reconstructed correctly only by the exact
+    /// transmitted predictor, so the predicted subbands come out wrong —
+    /// on the crate's own round-trip test, which predicts nearly every
+    /// subband of every frame, the result is unusable (≈ 0 dB SNR); on
+    /// commercial streams, which predict a few percent of subbands, it
+    /// decodes every frame with plausible levels. Use it to keep a track
+    /// playing, not for transcoding. [`Decoder::adpcm_estimated`](crate::Decoder::adpcm_estimated)
     /// counts the subbands it was used on.
     Estimate,
 }
@@ -81,14 +87,33 @@ impl PredictorState {
         }
     }
 
-    /// Estimate a predictor for subband `sb` from its reconstructed samples
-    /// before this subsubframe (`prior`, from the frame start) and the
-    /// carried history ([`AdpcmFallback::Estimate`]).
-    pub fn estimate(&mut self, sb: usize, prior: &[f64]) -> [f64; ORDER] {
+    /// [`AdpcmFallback::Estimate`] for subband `sb` over one subframe:
+    /// `frame[t0..]` holds the subframe's residuals, `frame[..t0]` the
+    /// reconstructed samples before it. A predicted subband is one the
+    /// encoder found strongly predictable, typically tonal, and a tonal
+    /// residual is reconstructed well only by a predictor that annihilates
+    /// the tone as exactly as the transmitted one: the estimate is the
+    /// covariance-method least-squares predictor of the subband's last
+    /// [`HIST`] reconstructed samples (exact for a clean sum of tones),
+    /// replaced by the autocorrelation-method one when it is not stable.
+    /// Reconstructs in place and returns the predictor used.
+    pub fn estimate_subframe(&mut self, sb: usize, frame: &mut [f64], t0: usize) -> [f64; ORDER] {
         self.estimated += 1;
-        let t = prior.len() as isize;
-        let window: Vec<f64> = (t - HIST as isize..t).map(|k| self.at(sb, prior, k)).collect();
-        lpc(&window)
+        let hist: Vec<f64> = (t0 as isize - HIST as isize..t0 as isize).map(|k| self.at(sb, frame, k)).collect();
+        let c = covariance_lpc(&hist).filter(stable).unwrap_or_else(|| lpc(&hist, 1.0));
+        let residual: Vec<f64> = frame[t0..].to_vec();
+        self.inverse(sb, &c, frame, t0);
+        // A mismatched predictor on a tonal subband can ring far above the
+        // signal it stands in for: if the reconstruction comes out more
+        // than 12 dB above the history, keep the residual alone.
+        let energy = |v: &[f64]| v.iter().map(|x| x * x).sum::<f64>() / v.len().max(1) as f64;
+        let limit = 16.0 * energy(&hist).max(energy(&residual));
+        let e = energy(&frame[t0..]);
+        if !e.is_finite() || e > limit {
+            frame[t0..].copy_from_slice(&residual);
+            return [0.0; ORDER];
+        }
+        c
     }
 
     /// End a frame: carry the last [`HIST`] samples of every subband.
@@ -111,11 +136,81 @@ impl PredictorState {
     }
 }
 
+/// Solve the 4×4 normal equations `r·c = b` (Gaussian elimination with
+/// partial pivoting and a small ridge); `None` when singular.
+fn solve4(mut r: [[f64; ORDER]; ORDER], mut b: [f64; ORDER]) -> Option<[f64; ORDER]> {
+    let ridge = 1e-9 * (0..ORDER).map(|i| r[i][i]).sum::<f64>().max(1e-30);
+    for (i, row) in r.iter_mut().enumerate() {
+        row[i] += ridge;
+    }
+    for col in 0..ORDER {
+        let piv = (col..ORDER).max_by(|&a, &b| r[a][col].abs().total_cmp(&r[b][col].abs()))?;
+        if r[piv][col].abs() < 1e-30 {
+            return None;
+        }
+        r.swap(col, piv);
+        b.swap(col, piv);
+        for row in col + 1..ORDER {
+            let f = r[row][col] / r[col][col];
+            for k in col..ORDER {
+                r[row][k] -= f * r[col][k];
+            }
+            b[row] -= f * b[col];
+        }
+    }
+    let mut c = [0.0; ORDER];
+    for i in (0..ORDER).rev() {
+        let mut acc = b[i];
+        for k in i + 1..ORDER {
+            acc -= r[i][k] * c[k];
+        }
+        c[i] = acc / r[i][i];
+    }
+    c.iter().all(|v| v.is_finite()).then_some(c)
+}
+
+/// Least-squares (covariance method) 4th-order predictor of `x[m]` from
+/// `x[m−1..m−4]` over the samples of `x` that have four predecessors.
+fn covariance_lpc(x: &[f64]) -> Option<[f64; ORDER]> {
+    let mut r = [[0.0f64; ORDER]; ORDER];
+    let mut b = [0.0f64; ORDER];
+    for m in ORDER..x.len() {
+        let past: [f64; ORDER] = std::array::from_fn(|n| x[m - n - 1]);
+        for i in 0..ORDER {
+            b[i] += past[i] * x[m];
+            for j in 0..ORDER {
+                r[i][j] += past[i] * past[j];
+            }
+        }
+    }
+    if r[0][0] <= 1e-9 {
+        return None;
+    }
+    solve4(r, b)
+}
+
+/// Whether the all-pole filter `1 / (1 − Σ c[n] z^−(n+1))` is stable (step-
+/// down recursion: every reflection coefficient inside the unit circle).
+pub(crate) fn stable(c: &[f64; ORDER]) -> bool {
+    // a(z) = 1 − Σ c z^−(n+1), as a[0..=4].
+    let mut a: Vec<f64> = std::iter::once(1.0).chain(c.iter().map(|v| -v)).collect();
+    while a.len() > 1 {
+        let p = a.len() - 1;
+        let k = a[p];
+        if k.abs() >= 0.9999 {
+            return false;
+        }
+        let d = 1.0 - k * k;
+        a = (0..p).map(|i| (a[i] - k * a[p - i]) / d).collect();
+    }
+    true
+}
+
 /// 4th-order LPC by the autocorrelation method (Levinson–Durbin) with a
-/// small white-noise correction and 0.98 bandwidth expansion, in the
+/// small white-noise correction and bandwidth expansion by `gamma`, in the
 /// predictor sign of C.3.3 (`x[m] ≈ Σ c[n]·x[m−n−1]`). Silent or
 /// unpredictable history gives no prediction.
-pub(crate) fn lpc(x: &[f64]) -> [f64; ORDER] {
+pub(crate) fn lpc(x: &[f64], gamma: f64) -> [f64; ORDER] {
     let mut r = [0.0f64; ORDER + 1];
     for (lag, rl) in r.iter_mut().enumerate() {
         *rl = x.iter().zip(&x[lag..]).map(|(a, b)| a * b).sum();
@@ -145,7 +240,7 @@ pub(crate) fn lpc(x: &[f64]) -> [f64; ORDER] {
     }
     let mut g = 1.0;
     std::array::from_fn(|n| {
-        g *= 0.98;
+        g *= gamma;
         -a[n + 1] * g
     })
 }
@@ -204,7 +299,7 @@ mod tests {
         for m in 2..32 {
             x.push(2.0 * r * th.cos() * x[m - 1] - r * r * x[m - 2]);
         }
-        let c = lpc(&x);
+        let c = lpc(&x, 0.98);
         // Predict the last 8 from their history: error well under the signal.
         let (mut e, mut s) = (0.0, 0.0);
         for m in 24..32 {
@@ -213,6 +308,14 @@ mod tests {
             s += x[m].powi(2);
         }
         assert!(e < s * 1e-2, "prediction gain too low: {}", s / e);
-        assert_eq!(lpc(&[0.0; 32]), [0.0; 4]);
+        assert_eq!(lpc(&[0.0; 32], 0.98), [0.0; 4]);
+        // The covariance method is exact on a clean resonator, and stable.
+        let cc = covariance_lpc(&x).unwrap();
+        for m in 8..32 {
+            let p: f64 = (0..4).map(|n| cc[n] * x[m - n - 1]).sum();
+            assert!((x[m] - p).abs() < 1e-6 * x[m].abs().max(1e-3), "m={m}");
+        }
+        assert!(stable(&cc));
+        assert!(!stable(&[2.5, -1.0, 0.0, 0.0]));
     }
 }

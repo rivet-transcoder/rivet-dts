@@ -403,16 +403,15 @@ pub(crate) fn read_subsubframe(
                 }
             }
             if si.pmode[ch][sb] {
-                let coeffs = match ctx.adpcm_book {
-                    Some(b) => b.coefficients(si.pvq[ch][sb] as usize),
-                    None => match ctx.fallback {
-                        AdpcmFallback::Estimate => pred[ch].estimate(sb, &bufs[ch].s[sb][..t]),
-                        AdpcmFallback::Refuse => {
-                            unreachable!("a refused prediction is caught before the audio is read")
-                        }
-                    },
-                };
-                pred[ch].inverse(sb, &coeffs, &mut bufs[ch].s[sb][..t + 8], t);
+                match ctx.adpcm_book {
+                    Some(b) => {
+                        let coeffs = b.coefficients(si.pvq[ch][sb] as usize);
+                        pred[ch].inverse(sb, &coeffs, &mut bufs[ch].s[sb][..t + 8], t);
+                    }
+                    // Estimated over the whole subframe once it is read
+                    // (finish_estimates); a refusal is caught before.
+                    None => debug_assert_eq!(ctx.fallback, AdpcmFallback::Estimate),
+                }
             }
         }
     }
@@ -420,6 +419,30 @@ pub(crate) fn read_subsubframe(
         return Err(Error::Invalid("DSYNC missing at the end of a subsubframe"));
     }
     Ok(())
+}
+
+/// With [`AdpcmFallback::Estimate`] and no code book, reconstruct the
+/// predicted subbands of the subframe at blocks `t0..t0 + n`, all of whose
+/// residuals have now been read.
+pub(crate) fn finish_estimates(
+    p: &CodingParams,
+    si: &SideInfo,
+    t0: usize,
+    n: usize,
+    ctx: &AudioCtx,
+    bufs: &mut [ChannelBuf],
+    pred: &mut [PredictorState],
+) {
+    if ctx.adpcm_book.is_some() {
+        return;
+    }
+    for ch in 0..p.n {
+        for sb in 0..p.vqsub[ch] {
+            if si.pmode[ch][sb] {
+                pred[ch].estimate_subframe(sb, &mut bufs[ch].s[sb][..t0 + n], t0);
+            }
+        }
+    }
 }
 
 /// Joint intensity coding (Annex C.3.4) over blocks `t0..t0 + n`.

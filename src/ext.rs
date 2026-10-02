@@ -79,6 +79,7 @@ pub(crate) fn decode_set_subframes(
         for ssf in 0..ssc {
             core::read_subsubframe(r, p, &si, ssf, t0 + 8 * ssf, ctx, bufs, pred)?;
         }
+        core::finish_estimates(p, &si, t0, 8 * ssc, ctx, bufs, pred);
         core::apply_joint(p, &si, bufs, t0, 8 * ssc);
         t0 += 8 * ssc;
     }
@@ -504,13 +505,17 @@ pub(crate) fn decode_x96_subframes(
         for ch in 0..s.n {
             for sb in s.sbs..s.sbe[ch] {
                 if pmode[ch][sb] {
-                    for ssf in 0..ssc {
-                        let t = t0 + 8 * ssf;
-                        let coeffs = match ctx.adpcm_book {
-                            Some(b) => b.coefficients(pvq[ch][sb] as usize),
-                            None => pred[ch].estimate(sb, &bufs[ch].s[sb][..t]),
-                        };
-                        pred[ch].inverse(sb, &coeffs, &mut bufs[ch].s[sb][..t + 8], t);
+                    match ctx.adpcm_book {
+                        Some(b) => {
+                            let coeffs = b.coefficients(pvq[ch][sb] as usize);
+                            for ssf in 0..ssc {
+                                let t = t0 + 8 * ssf;
+                                pred[ch].inverse(sb, &coeffs, &mut bufs[ch].s[sb][..t + 8], t);
+                            }
+                        }
+                        None => {
+                            pred[ch].estimate_subframe(sb, &mut bufs[ch].s[sb][..t0 + nsamp], t0);
+                        }
                     }
                 }
             }

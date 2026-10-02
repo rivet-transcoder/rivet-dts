@@ -68,6 +68,7 @@ mod adpcm;
 mod bits;
 mod core;
 mod crc;
+pub mod encoder;
 mod exss;
 mod ext;
 mod huffman;
@@ -86,6 +87,7 @@ use ext::CoreFrameCtx;
 use synth::{Lfe2x, LfeInterp, Qmf, Qmf64};
 
 pub use adpcm::AdpcmFallback;
+pub use encoder::{Encoder, EncoderConfig};
 pub use layout::{Layout, Speaker, SpeakerList};
 pub use vq::{AdpcmCodebook, HfVqCodebook};
 
@@ -772,6 +774,7 @@ impl Decoder {
             for ssf in 0..ssc {
                 core::read_subsubframe(&mut r, p, &si, ssf, t0 + 8 * ssf, &ctx, &mut bufs, &mut pred)?;
             }
+            core::finish_estimates(p, &si, t0, 8 * ssc, &ctx, &mut bufs, &mut pred);
             core::apply_joint(p, &si, &mut bufs, t0, 8 * ssc);
             // Sum/difference decoding (Annex C.3.5); AMODE 3 is coded that
             // way by definition.
