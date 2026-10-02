@@ -506,6 +506,10 @@ struct Channel {
     speaker: Speaker,
     /// 32 or 64 subbands × blocks.
     buf: ChannelBuf,
+    /// The set's `SHUFF` for this channel and its `TMODE` per subframe
+    /// (what XBR reads its scale factors with).
+    shuff: u32,
+    tmode: Vec<[u32; NSB]>,
     /// Index into the decoder's state: `Core(i)` or `Ext(i)`.
     state: StateId,
 }
@@ -729,10 +733,8 @@ impl Decoder {
             aspf: h.aspf,
             cpf: h.cpf,
             lossless_steps: h.lossless_steps,
-            tmode: Vec::with_capacity(h.subframes),
-            shuff: [0; core::MAX_SET],
         };
-        cc.shuff[..n].copy_from_slice(&p.shuff[..n]);
+        let mut core_tmode: Vec<Vec<[u32; NSB]>> = vec![Vec::with_capacity(h.subframes); n];
         let mut range = vec![1.0f64; blocks];
         let mut lfe_dec: Vec<f64> = Vec::new();
         let mut hf_skipped = false;
@@ -797,9 +799,9 @@ impl Decoder {
             }
             range[t0..t0 + 8 * ssc].fill(rng);
             cc.ssc.push(ssc);
-            let mut tm = [[0u32; NSB]; core::MAX_SET];
-            tm[..n].copy_from_slice(&si.tmode[..n]);
-            cc.tmode.push(tm);
+            for (ch, t) in core_tmode.iter_mut().enumerate() {
+                t.push(si.tmode[ch]);
+            }
             t0 += 8 * ssc;
         }
         if t0 != blocks {
@@ -813,8 +815,9 @@ impl Decoder {
         // Full-band channels, core first.
         let mut channels: Vec<Channel> = bufs
             .into_iter()
+            .zip(core_tmode)
             .enumerate()
-            .map(|(i, buf)| Channel { speaker: core_spk[i], buf, state: StateId::Core(i) })
+            .map(|(i, (buf, tmode))| Channel { speaker: core_spk[i], buf, shuff: p.shuff[i], tmode, state: StateId::Core(i) })
             .collect();
         let mut ext_pred: Vec<(usize, adpcm::PredictorState)> = Vec::new();
         let mut x96: Option<(Vec<ChannelBuf>, Vec<adpcm::PredictorState>)> = None;
@@ -834,8 +837,17 @@ impl Decoder {
                     Some(ext::SYNC_XCH) if matches!(h.ext_audio_id, 0 | 3) => {
                         let fsize = BitReader::new(&core[at + 4..]).bits(10)? as usize;
                         let dist = core.len() - at;
-                        if dist == fsize + 1 || dist == fsize {
-                            in_core.push((ext::SYNC_XCH, at));
+                        // XChFSIZE + 1 is the distance to the frame end; legacy
+                        // streams use XChFSIZE (6.4.2). An exact match wins over
+                        // a legacy one (data can alias the sync just before it).
+                        let exact = dist == fsize + 1;
+                        if exact || dist == fsize {
+                            let prev = in_core.iter().position(|(s, _)| *s == ext::SYNC_XCH);
+                            match prev {
+                                Some(i) if exact => in_core[i] = (ext::SYNC_XCH, at),
+                                Some(_) => {}
+                                None => in_core.push((ext::SYNC_XCH, at)),
+                            }
                             found.xch = true;
                         }
                     }
@@ -891,13 +903,15 @@ impl Decoder {
                     pr.begin_frame(h.hflag);
                 }
                 let lower: Vec<&ChannelBuf> = channels.iter().map(|c| &c.buf).collect();
-                ext::decode_set_subframes(&mut xr, &xp, &lower, &cc, ext_ctx, &mut xb, &mut xpred, &mut hf_skipped, " of XCh")?;
+                let tmodes =
+                    ext::decode_set_subframes(&mut xr, &xp, &lower, &cc, ext_ctx, &mut xb, &mut xpred, &mut hf_skipped, " of XCh")?;
                 if xp.n != 1 {
                     return Err(Error::Unsupported(format!("XCh with {} channels (only the back centre is defined)", xp.n)));
                 }
                 let src = channels.len();
                 for (i, (buf, pr)) in xb.into_iter().zip(xpred).enumerate() {
-                    channels.push(Channel { speaker: Speaker::BC, buf, state: StateId::Ext(base + i) });
+                    let tmode = tmodes.iter().map(|t| t[i]).collect();
+                    channels.push(Channel { speaker: Speaker::BC, buf, shuff: xp.shuff[i], tmode, state: StateId::Ext(base + i) });
                     ext_pred.push((base + i, pr));
                 }
                 let targets: Vec<(usize, f64)> = channels
@@ -944,13 +958,25 @@ impl Decoder {
                         pr.begin_frame(h.hflag);
                     }
                     let lower: Vec<&ChannelBuf> = channels.iter().map(|c| &c.buf).collect();
-                    ext::decode_set_subframes(&mut xr, &set.params, &lower, &cc, ext_ctx, &mut xb, &mut xpred, &mut hf_skipped, " of XXCH")?;
+                    let tmodes = ext::decode_set_subframes(
+                        &mut xr,
+                        &set.params,
+                        &lower,
+                        &cc,
+                        ext_ctx,
+                        &mut xb,
+                        &mut xpred,
+                        &mut hf_skipped,
+                        " of XXCH",
+                    )?;
                     lower_subs.extend_from_slice(&set.params.subs[..k]);
                     let first = channels.len();
                     for (i, (buf, pr)) in xb.into_iter().zip(xpred).enumerate() {
                         let speaker = layout::xxch_mask_speaker(set.channel_bits[i])
                             .ok_or(Error::Invalid("XXCH speaker mask bit with no position"))?;
-                        channels.push(Channel { speaker, buf, state: StateId::Ext(next_state + i) });
+                        let tmode = tmodes.iter().map(|t| t[i]).collect();
+                        let shuff = set.params.shuff[i];
+                        channels.push(Channel { speaker, buf, shuff, tmode, state: StateId::Ext(next_state + i) });
                         ext_pred.push((next_state + i, pr));
                     }
                     if let Some((coeffs, scale)) = &set.downmix {
@@ -1063,12 +1089,20 @@ impl Decoder {
             if let Some((f, a)) = &asset0
                 && let Some(rg) = a.component(exss::mask::EXSS_XBR)
             {
-                let core_n = n;
-                let mut list: Vec<(&mut ChannelBuf, Option<usize>)> = match &mut x96 {
-                    Some((b64, _)) => b64.iter_mut().enumerate().map(|(i, b)| (b, (i < core_n).then_some(i))).collect(),
-                    None => channels.iter_mut().enumerate().map(|(i, c)| (&mut c.buf, (i < core_n).then_some(i))).collect(),
+                let mut list: Vec<ext::XbrTarget> = match &mut x96 {
+                    Some((b64, _)) => b64
+                        .iter_mut()
+                        .zip(&channels)
+                        .map(|(buf, c)| ext::XbrTarget { buf, shuff: c.shuff, tmode: &c.tmode })
+                        .collect(),
+                    None => channels
+                        .iter_mut()
+                        .map(|c| ext::XbrTarget { buf: &mut c.buf, shuff: c.shuff, tmode: &c.tmode })
+                        .collect(),
                 };
-                let rest = list.split_off(core_n.min(list.len()));
+                // Channel set 0 is the core's; the next ones the extension
+                // channels in order.
+                let rest = list.split_off(n.min(list.len()));
                 let mut targets = vec![list, rest];
                 ext::decode_xbr(&f[rg], &cc, &mut targets)?;
                 used.xbr = true;

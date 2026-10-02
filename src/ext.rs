@@ -30,10 +30,6 @@ pub(crate) struct CoreFrameCtx {
     pub aspf: bool,
     pub cpf: bool,
     pub lossless_steps: bool,
-    /// Per subframe, per core channel, per subband: `TMODE`.
-    pub tmode: Vec<[[u32; NSB]; MAX_SET]>,
-    /// Per core channel: `SHUFF` (selects the 6- or 7-bit scale table).
-    pub shuff: [u32; MAX_SET],
 }
 
 impl CoreFrameCtx {
@@ -68,10 +64,12 @@ pub(crate) fn decode_set_subframes(
     pred: &mut [PredictorState],
     hf_skipped: &mut bool,
     what: &str,
-) -> Result<(), Error> {
+) -> Result<Vec<[[u32; NSB]; MAX_SET]>, Error> {
     let mut t0 = 0;
+    let mut tmodes = Vec::with_capacity(cc.ssc.len());
     for &ssc in &cc.ssc {
         let si = core::parse_side_info(r, p, ssc)?;
+        tmodes.push(si.tmode);
         if cc.cpf {
             let _sicrc = r.bits(16)?;
         }
@@ -84,7 +82,7 @@ pub(crate) fn decode_set_subframes(
         core::apply_joint(p, &si, bufs, lower, t0, 8 * ssc);
         t0 += 8 * ssc;
     }
-    Ok(())
+    Ok(tmodes)
 }
 
 /// The XCh frame header and audio header (Tables 6-17, 6-18), from the
@@ -548,15 +546,17 @@ pub(crate) fn decode_x96_subframes(
 // XBR
 // ---------------------------------------------------------------------------
 
+/// One channel an XBR channel set extends: its subband samples, and the
+/// `SHUFF` and per-subframe `TMODE`s it was coded with.
+pub(crate) struct XbrTarget<'a> {
+    pub buf: &'a mut ChannelBuf,
+    pub shuff: u32,
+    pub tmode: &'a [[u32; NSB]],
+}
+
 /// The XBR frame (Tables 6-12 … 6-16), adding its residuals into the
-/// channel sets' subband samples: `targets[set]` are the buffers of the
-/// set's channels, in order, and the core channel index each one's `TMODE`
-/// and `SHUFF` come from (`None` for channels the core does not carry).
-pub(crate) fn decode_xbr(
-    data: &[u8],
-    cc: &CoreFrameCtx,
-    targets: &mut [Vec<(&mut ChannelBuf, Option<usize>)>],
-) -> Result<(), Error> {
+/// channel sets' subband samples: `targets[set]` are the set's channels.
+pub(crate) fn decode_xbr(data: &[u8], cc: &CoreFrameCtx, targets: &mut [Vec<XbrTarget>]) -> Result<(), Error> {
     let mut r = BitReader::new(data);
     if r.bits(32)? != SYNC_XBR {
         return Err(Error::Invalid("XBR sync word"));
@@ -620,8 +620,7 @@ pub(crate) fn decode_xbr(
             }
             let mut scales: Vec<Vec<[f64; 2]>> = Vec::with_capacity(nch);
             for ch in 0..nch {
-                let core_ch = target[ch].1;
-                let shuff = core_ch.map(|c| cc.shuff[c]).unwrap_or(0);
+                let shuff = target[ch].shuff;
                 let mut sc = Vec::with_capacity(bands[ch]);
                 for sb in 0..bands[ch] {
                     let mut pair = [0.0; 2];
@@ -635,7 +634,7 @@ pub(crate) fn decode_xbr(
                             v.map(|v| v as f64).ok_or(Error::Invalid("XBR scale index outside the table"))
                         };
                         pair[0] = look(r.bits(scale_bits[ch])? as usize)?;
-                        let tm = core_ch.map(|c| cc.tmode[sf][c][sb.min(NSB - 1)]).unwrap_or(0);
+                        let tm = target[ch].tmode.get(sf).map_or(0, |t| t[sb.min(NSB - 1)]);
                         if tmode_flag && tm > 0 {
                             pair[1] = look(r.bits(scale_bits[ch])? as usize)?;
                         }
@@ -646,8 +645,7 @@ pub(crate) fn decode_xbr(
             }
             for ssf in 0..ssc {
                 for ch in 0..nch {
-                    let core_ch = target[ch].1;
-                    let blocks = target[ch].0.s.first().map_or(0, |v| v.len());
+                    let blocks = target[ch].buf.s.first().map_or(0, |v| v.len());
                     for sb in 0..bands[ch] {
                         let a = abits[ch][sb] as usize;
                         let mut q = [0i32; 8];
@@ -668,12 +666,12 @@ pub(crate) fn decode_xbr(
                         }
                         let step = *step_table.get(a).ok_or(Error::Invalid("XBR ABITS above 26"))? as f64
                             / (1u32 << 22) as f64;
-                        let tm = if tmode_flag { core_ch.map(|c| cc.tmode[sf][c][sb.min(NSB - 1)]).unwrap_or(0) } else { 0 };
+                        let tm = if tmode_flag { target[ch].tmode.get(sf).map_or(0, |t| t[sb.min(NSB - 1)]) } else { 0 };
                         let sf_ = if tm == 0 || ssf < tm as usize { scales[ch][sb][0] } else { scales[ch][sb][1] };
                         let t = t0 + 8 * ssf;
-                        if sb < target[ch].0.s.len() && t + 8 <= blocks {
+                        if sb < target[ch].buf.s.len() && t + 8 <= blocks {
                             for (m, v) in q.iter().enumerate() {
-                                target[ch].0.s[sb][t + m] += step * sf_ * *v as f64;
+                                target[ch].buf.s[sb][t + m] += step * sf_ * *v as f64;
                             }
                         }
                     }
