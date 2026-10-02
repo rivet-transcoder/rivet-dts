@@ -78,6 +78,7 @@ use bits::BitReader;
 use huffman::SampleCoding;
 use synth::{LfeInterp, NUM_SUBBANDS, Qmf};
 pub use vq::{AdpcmCodebook, HfVqCodebook};
+pub use encoder::{Encoder, EncoderConfig};
 
 /// Core substream sync word (§5.3), 16-bit big-endian framing — the only
 /// framing that occurs inside Matroska/MP4.
