@@ -68,6 +68,7 @@
 mod bits;
 mod huffman;
 mod synth;
+pub mod vq;
 pub mod tables;
 #[cfg(test)]
 mod tests;
@@ -75,6 +76,7 @@ mod tests;
 use bits::BitReader;
 use huffman::SampleCoding;
 use synth::{LfeInterp, NUM_SUBBANDS, Qmf};
+pub use vq::{AdpcmCodebook, HfVqCodebook};
 
 /// Core substream sync word (§5.3), 16-bit big-endian framing — the only
 /// framing that occurs inside Matroska/MP4.
