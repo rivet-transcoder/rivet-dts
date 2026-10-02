@@ -4,14 +4,16 @@
 Source: ETSI TS 102 114 V1.6.1 (2019-08), "DTS Coherent Acoustics; Core and
 Extensions with Additional Profiles", published free of charge by ETSI at
 https://www.etsi.org/deliver/etsi_ts/102100_102199/102114/01.06.01_60/ts_102114v010601p.pdf
-Cross-check source: V1.2.1 (2002-12) from the same server,
+Cross-check sources: V1.2.1 (2002-12) and, for D.9 and D.11 (which V1.2.1
+does not print), V1.4.1 (2012-11), from the same server,
 .../102114/01.02.01_60/ts_102114v010201p.pdf
 
 Usage (poppler's pdftotext; xpdf's lays the tables out differently and
 this parser does not read it):
     pdftotext -layout ts_102114v010601p.pdf spec.txt
     pdftotext -layout ts_102114v010201p.pdf spec_v121.txt
-    python dts_gen_tables.py spec.txt spec_v121.txt > ../src/tables.rs
+    pdftotext -layout ts_102114v010401p.pdf spec_v141.txt
+    python dts_gen_tables.py spec.txt spec_v121.txt spec_v141.txt > ../src/tables.rs
 
 Every table is parsed from the `-layout` text of the PDFs, never from any
 other decoder's source. The script refuses to emit output unless every
@@ -259,6 +261,47 @@ def parse_fir_v121(page_list, start_needle, stop_needle):
 # --------------------------------------------------------------------------
 
 
+def parse_fir_1024(page_list, start_needle, stop_needle):
+    """D.9 prints `Coef #  value` pairs, 1-based, three per row. Every
+    edition prints row 160 twice with the same value; any other repetition
+    or a differing duplicate is an error."""
+    taps = {}
+    for line in section_lines(page_list, start_needle, stop_needle):
+        for m in re.finditer(r"(\d[\d ]*?)\s{2,}(-?\d,\d+e[-+]\d+)", line.strip()):
+            idx = int(m.group(1).replace(" ", ""))
+            val = num(m.group(2))
+            if idx in taps:
+                assert idx == 160 and taps[idx] == val, f"D.9 row {idx} printed twice, differently"
+            taps[idx] = val
+    assert sorted(taps) == list(range(1, 1025)), f"D.9: {len(taps)} taps"
+    return [taps[i] for i in range(1, 1025)]
+
+
+def parse_dmix(page_list, start_needle, stop_needle, with_inverse=True):
+    """D.11: `index  dB  abs  DmixTable  InvIndex  InvDmixTbl` rows; the last
+    two are N/A below index 40. V1.4.1 prints the InvDmixTbl column one row
+    late (row 40 without a value, row 41 with row 40's), so its cross-check
+    reads the DmixTable column only."""
+    dmix, inv = {}, {}
+    for line in section_lines(page_list, start_needle, stop_needle):
+        toks = line.split()
+        if len(toks) in (5, 6) and toks[0].isdigit() and toks[3].isdigit():
+            i = int(toks[0])
+            assert i not in dmix, f"D.11 row {i} twice"
+            dmix[i] = int(toks[3])
+            if len(toks) == 6 and toks[4] != "N/A":
+                inv[int(toks[4])] = int(toks[5])
+    assert sorted(dmix) == list(range(241)), f"D.11: {len(dmix)} rows"
+    if not with_inverse:
+        return [dmix[i] for i in range(241)]
+    assert sorted(inv) == list(range(201)), f"D.11 inverse: {len(inv)} rows"
+    for i in range(40, 241):
+        # InvDmixTbl (indexed DmixTblIndex − 40) is 2^16 / AbsValue of the
+        # same row: check the pairing.
+        assert abs(inv[i - 40] * dmix[i] / 2**31 - 1) < 2e-3, (i, inv[i - 40], dmix[i])
+    return [dmix[i] for i in range(241)], [inv[i] for i in range(201)]
+
+
 def fmt_f32(v):
     s = repr(float(v))
     if "e" in s:
@@ -285,6 +328,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     spec = pages_of(sys.argv[1])
     v121 = pages_of(sys.argv[2])
+    v141 = pages_of(sys.argv[3])
 
     p_d11 = find_page(spec, "D.1.1")
     p_d12 = find_page(spec, "D.1.2")
@@ -374,11 +418,19 @@ def main():
     pr_dev = max(abs(a - b) for a, b in zip(fir[0], old["PR"]))
     assert pr_dev < 1e-4, f"PR filter differs from V1.2.1 by {pr_dev}, more than a re-derivation"
 
+    x96_fir = parse_fir_1024(spec, "D.9", "D.10")
+    dmix, inv_dmix = parse_dmix(spec, "D.11", "Annex E")
+    # V1.2.1 predates D.9 and D.11; V1.4.1 (2012-11) prints both and must agree.
+    assert parse_fir_1024(v141, "D.9", "D.10") == x96_fir, "D.9 differs from V1.4.1"
+    assert parse_dmix(v141, "D.11", "Annex E", with_inverse=False) == dmix, "D.11 differs from V1.4.1"
+    p_d11t = find_page(spec, "D.11")
+
     sys.stderr.write(
         f"parsed: rms6={len(rms6)} rms7={len(rms7)} steps=2x{len(step_lossy)} joint={len(joint)} drc={len(drc)} "
         f"books={len(books)} ({sum(len(b) for b in books.values())} entries) fir=4x512; "
         f"V1.6.1 errata resolved from V1.2.1: {errata}; NPR/LFE FIRs identical across editions; "
-        f"PR FIR max |delta| vs V1.2.1 = {pr_dev:.3e}\n"
+        f"PR FIR max |delta| vs V1.2.1 = {pr_dev:.3e}; X96 FIR 1024 taps and D.11 DmixTable ("
+        f"{len(dmix)} rows; InvDmixTbl {len(inv_dmix)} rows, self-consistent) identical to V1.4.1\n"
     )
 
     out = []
@@ -482,6 +534,26 @@ def main():
             f"D.8 \"32-Band Interpolation and LFE Interpolation FIR\", pages {p_d8}–{p_d9}:\n{what}, 512 taps.",
             per_line=4, fmt=fmt_f32,
         )
+    emit_array(
+        out, "X96_QMF_FIR", "f64", x96_fir,
+        f"D.9 \"1 024 tap FIR for X96 Synthesis QMF\", pages {p_d9}–{p_d9 + 6}: the 64-band\n"
+        "prototype with the signs of every second block of 128 taps changed, as printed\n"
+        "(6.2.4.7). Row 160 is printed twice with the same value in every edition.",
+        per_line=4, fmt=fmt_f32,
+    )
+    emit_array(
+        out, "DMIX_TABLE", "u16", dmix,
+        f"D.11 \"Look-up Table for Downmix Scale Factors\", pages {p_d11t}–{p_d11t + 4}: the\n"
+        "`DmixTable` column, |coefficient| × 2^15 for `DmixTblIndex` 0..=240\n"
+        "(−60 dB … 0 dB; Annex C.4–C.6, C.9).",
+        per_line=12,
+    )
+    emit_array(
+        out, "INV_DMIX_TABLE", "u32", inv_dmix,
+        "D.11, the `InvDmixTbl` column: 2^16 / |scale| for `InvDmixTblIndex` 40..=240\n"
+        "(stored at index − 40; −40 dB … 0 dB).",
+        per_line=10,
+    )
     out.append("")
     print("\n".join(out))
 
