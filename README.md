@@ -113,7 +113,7 @@ Frequency response at full rate: within ±0.005 dB from 50 Hz to 20 kHz
 checked for sync, `FSIZE` and the exact constant size.
 
 **Public DTS streams** (`tests/samples.rs`): 18 streams fetched as data
-from the public sample archive at <https://samples.ffmpeg.org/A-codecs/DTS/>
+from the public sample archive at <https://streams.videolan.org/samples/A-codecs/DTS/>
 by `tools/fetch_samples.sh` and checked against their SHA-256 (listed in
 the test): DTS 4.0 and 5.1, DTS-ES 6.1 (XCh), 96/24 (X96), DTS-HD High
 Resolution 5.1/6.1 (XBR, XXCH, XCh), DTS-HD Master Audio 2.0–7.1 cores, a

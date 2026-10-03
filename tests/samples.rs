@@ -9,7 +9,7 @@
 //! correction; X96: the core's spectrum below 24 kHz, plus content above).
 //!
 //! The streams are not in this repository. They are DTS's and others'
-//! demonstration streams as collected at <https://samples.ffmpeg.org/A-codecs/DTS/>
+//! demonstration streams as collected at <https://streams.videolan.org/samples/A-codecs/DTS/>
 //! (a public sample archive; only the files are used, as data). Put them in
 //! a directory and point `DTS_SAMPLES_DIR` at it (CI's samples job does;
 //! `tools/fetch_samples.sh` downloads them); each one is checked against
@@ -38,7 +38,7 @@ const fn ext(xch: bool, xxch: bool, x96: bool, xbr: bool, exss: bool) -> Extensi
 
 const NONE: Extensions = ext(false, false, false, false, false);
 
-/// `(archive path, …)`. URLs: `https://samples.ffmpeg.org/A-codecs/DTS/` + path.
+/// `(archive path, …)`. URLs: `https://streams.videolan.org/samples/A-codecs/DTS/` + path.
 const SAMPLES: &[(&str, Sample)] = &[
     ("dts/3-1.dts", Sample { file: "3-1.dts", sha256: "c21f1dd9a21f96ff198365b22edff20d0c35d8c8c659dd27aac34b720cfb7b9a", layout: "4.0", rate: 48_000, decoded: ext(false, false, false, false, true), skipped_xll: true }),
     ("dts/5.1 24bit.dts", Sample { file: "5.1 24bit.dts", sha256: "3956047bd9706aa373e3d8b7c8994843374b67351d670ffbb2cd480c3f3190d6", layout: "5.1(side)", rate: 48_000, decoded: NONE, skipped_xll: false }),

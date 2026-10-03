@@ -26,7 +26,7 @@ stable predictors constructed in this crate, not D.10.1.
 
 No other implementation is used in testing, as a library, a program or a
 test oracle. The public sample streams the sample tests decode are fetched
-at test time, as data, from https://samples.ffmpeg.org/A-codecs/DTS/ and
+at test time, as data, from https://streams.videolan.org/samples/A-codecs/DTS/ and
 checked against the SHA-256 sums in tests/samples.rs; they are not
 distributed with this crate.
 

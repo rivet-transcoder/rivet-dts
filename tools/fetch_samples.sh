@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Fetch the public DTS sample streams tests/samples.rs checks, into the
 # directory given (default: samples/), verifying each against its SHA-256.
-# Source: the public sample archive at https://samples.ffmpeg.org/A-codecs/DTS/
+# Source: the public sample archive at https://streams.videolan.org/samples/A-codecs/DTS/
 # (the files only, used as data). Then:
 #   DTS_SAMPLES_DIR=samples cargo test --release --test samples
 set -euo pipefail
 dir="${1:-samples}"
 mkdir -p "$dir"
-base="https://samples.ffmpeg.org/A-codecs/DTS"
+base="https://streams.videolan.org/samples/A-codecs/DTS"
 fetch() { # path sha256
   local path="$1" sum="$2" file
   file="$dir/$(basename "$path")"
