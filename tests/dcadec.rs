@@ -15,9 +15,15 @@
 //! with: the synthesis bank and its gain, the scale factor, step size and
 //! LFE tables, the bit allocation and every entropy code the encoder uses.
 //!
-//! What the tool cannot check: `FILTS` = 1 streams (it does not decode
-//! them; every public stream is `FILTS` = 0), and layouts its WAV output
-//! does not carry one for one (see `compared_layouts`). Streams that
+//! The streams are the encoder's defaults, `FILTS` = 0 — the bank C.3.6
+//! calls the lossy one, which every public stream uses. The tool decodes
+//! `FILTS` = 1 streams to garbage (a probe of it on this encoder's streams:
+//! with the bit set its output is unrelated to the signal, whichever bank
+//! the encoder analysed with; with the bit clear it matches), which is why
+//! `FILTS` = 0 is the encoder's default. Stereo goes through `-o wav`
+//! (16-bit PCM, which for two channels carries the decode unmixed; `-o
+//! wav6` does not), within 16-bit rounding. Layouts its WAV output does not
+//! carry one for one are left out (see `compared_layouts`). Streams that
 //! predict (ADPCM) are not sent either: this crate's encoder predicts only
 //! with a code book the caller supplies, and the test book is not D.10.1.
 //!
@@ -220,10 +226,16 @@ fn compare(bin: &str, cfg: EncoderConfig, dir: &Path) -> Result<Agreement, Strin
     );
     let rate = cfg.sample_rate;
     let speakers = cfg.layout.speakers().to_vec();
+    // FILTS as the header has it: what was asked for.
+    let filts = cfg.perfect_reconstruction;
     let (stream, ours) = encode_and_decode(cfg, 1.0);
+    let mut dec = Decoder::new();
+    dec.decode(&stream).unwrap();
+    assert_eq!(dec.info().unwrap().perfect_reconstruction, filts, "{label}: FILTS");
     let path = dir.join(format!("{}.dts", label.replace(|c: char| !c.is_ascii_alphanumeric(), "_")));
     std::fs::write(&path, &stream).unwrap();
-    let out = Command::new(bin).args(["-o", "wav6", "-r"]).arg(&path).output().expect("run dcadec");
+    let mode = if speakers.len() == 2 { "wav" } else { "wav6" };
+    let out = Command::new(bin).args(["-o", mode, "-r"]).arg(&path).output().expect("run dcadec");
     assert!(out.status.success(), "{label}: dcadec failed: {}", String::from_utf8_lossy(&out.stderr));
     let (their_rate, theirs) = read_wav(&out.stdout);
     let _ = std::fs::remove_file(&path);
@@ -294,6 +306,9 @@ fn scratch(name: &str) -> PathBuf {
 /// channel. Both decoders are floating-point renderings of the same
 /// arithmetic.
 const SHAPE_TOLERANCE: f64 = 1e-4;
+/// The same through the tool's 16-bit stereo output: its rounding alone is
+/// 2^-15/√12 ≈ 9e-6 RMS, a few 1e-5 relative to these signals.
+const SHAPE_TOLERANCE_16_BIT: f64 = 3e-4;
 
 /// The gain deviation allowed per channel. At the full rates, where one or
 /// two channels get the finest quantisers, the two decoders' levels differ
@@ -304,22 +319,21 @@ const SHAPE_TOLERANCE: f64 = 1e-4;
 const GAIN_TOLERANCE_FULL_RATE: f64 = 2e-3;
 const GAIN_TOLERANCE: f64 = 2e-5;
 
-/// The configuration with the QMF prototype the tool decodes. libdca
-/// decodes `FILTS` = 0 streams (the non-perfect prototype, the one every
-/// public stream uses) but not `FILTS` = 1 ones, so the comparison is on
-/// `FILTS` = 0; the perfect-reconstruction bank is checked by the round
+/// The encoder's default configuration — `FILTS` = 0, the prototype the
+/// tool (and every public stream) uses. The perfect-reconstruction bank
+/// (`FILTS` = 1), which the tool does not decode, is checked by the round
 /// trips and the spec-derived unit tests only.
 fn config(rate: u32, layout: Layout, bit_rate: u32) -> EncoderConfig {
-    let mut cfg = EncoderConfig::new(rate, layout, bit_rate);
-    cfg.perfect_reconstruction = false;
+    let cfg = EncoderConfig::new(rate, layout, bit_rate);
+    assert!(!cfg.perfect_reconstruction, "the default is FILTS = 0");
     cfg
 }
 
 /// The layouts the tool's multichannel WAV output carries one for one:
 /// mono, and every core arrangement of three or more channels with the
-/// LFE. Its two-channel output is 16-bit PCM that clips (for the public
-/// stereo streams as well), and for three or more channels without the LFE
-/// it writes channels that are mixtures, or an extra one — so those
+/// LFE. (Stereo is compared through its two-channel output, below.) For
+/// three or more channels without the LFE it writes channels that are
+/// mixtures, or an extra one; mono+LFE is not compared either. Those
 /// layouts, decoded by this crate alone, are covered by the round trips.
 fn compared_layouts() -> Vec<Layout> {
     let mut v = vec![Layout::Mono];
@@ -328,6 +342,10 @@ fn compared_layouts() -> Vec<Layout> {
 }
 
 fn check(bin: &str, cfgs: Vec<EncoderConfig>, gain_tolerance: f64, dir: &Path) {
+    check_within(bin, cfgs, gain_tolerance, SHAPE_TOLERANCE, dir);
+}
+
+fn check_within(bin: &str, cfgs: Vec<EncoderConfig>, gain_tolerance: f64, shape_tolerance: f64, dir: &Path) {
     let (mut gain, mut shape) = (0.0f64, 0.0f64);
     let n = cfgs.len();
     for cfg in cfgs {
@@ -336,7 +354,7 @@ fn check(bin: &str, cfgs: Vec<EncoderConfig>, gain_tolerance: f64, dir: &Path) {
         shape = shape.max(a.shape);
     }
     eprintln!("{n} streams: worst gain deviation {gain:.2e}, worst relative RMS after gain {shape:.2e}");
-    assert!(shape < SHAPE_TOLERANCE, "relative RMS {shape:.2e} ≥ {SHAPE_TOLERANCE:e}");
+    assert!(shape < shape_tolerance, "relative RMS {shape:.2e} ≥ {shape_tolerance:e}");
     assert!(gain < gain_tolerance, "gain deviation {gain:.2e} ≥ {gain_tolerance:e}");
 }
 
@@ -374,4 +392,29 @@ fn every_compared_layout_agrees_with_libdca_at_lower_rates() {
         cfgs.push(cfg);
     }
     check(&bin, cfgs, GAIN_TOLERANCE, &dir);
+}
+
+/// Stereo, which libdca writes as 16-bit PCM: every rate, full and reduced
+/// bit rates, transient detection on and off.
+#[test]
+fn stereo_agrees_with_libdca() {
+    let Some(bin) = dcadec() else { return };
+    let dir = scratch("stereo");
+    let mut cfgs = Vec::new();
+    for (rate, bit_rate) in [
+        (48_000u32, 1_536_000u32),
+        (44_100, 1_411_200),
+        (32_000, 1_024_000),
+        (48_000, 768_000),
+        (48_000, 384_000),
+        (44_100, 256_000),
+        (32_000, 192_000),
+        (48_000, 128_000),
+    ] {
+        cfgs.push(config(rate, Layout::Stereo, bit_rate));
+    }
+    let mut cfg = config(48_000, Layout::Stereo, 512_000);
+    cfg.transients = false;
+    cfgs.push(cfg);
+    check_within(&bin, cfgs, GAIN_TOLERANCE_FULL_RATE, SHAPE_TOLERANCE_16_BIT, &dir);
 }

@@ -11,7 +11,10 @@
 //! Figure 5-1):
 //!
 //! - a 32-band analysis bank matched to the decoder's synthesis bank
-//!   (`FILTS` = 1, the perfect-reconstruction prototype, by default);
+//!   (`FILTS` = 0, the non-perfect-reconstruction prototype, by default:
+//!   C.3.6 names it the lossy bank, `raCoeffLossy`, against the lossless
+//!   one, `raCoeffLossLess`, for `FILTS` = 1; it is what deployed decoders
+//!   and every public stream use);
 //! - per subband, scale factors from the 6-bit square-root table (D.1.1)
 //!   and a mid-tread quantiser chosen by bit allocation (`ABITS`), with a
 //!   second scale factor after a transient (`TMODE`);
@@ -111,8 +114,18 @@ pub struct EncoderConfig {
     /// [`AdpcmCodebook::private_test_book`] only round-trips through this
     /// crate's decoder given the same book.
     pub adpcm_codebook: Option<Arc<AdpcmCodebook>>,
-    /// `FILTS`: the perfect-reconstruction QMF prototype (default `true`)
-    /// or the non-perfect one.
+    /// `FILTS`: the non-perfect-reconstruction QMF prototype (`false`, the
+    /// default) or the perfect-reconstruction one (`true`).
+    ///
+    /// ETSI TS 102 114 C.3.6 calls the `FILTS` = 0 prototype the lossy one
+    /// (`raCoeffLossy`) and the `FILTS` = 1 prototype the lossless one
+    /// (`raCoeffLossLess`). A lossy core like this encoder's is a `FILTS` =
+    /// 0 stream, as every public DTS stream is, and that is what decoders
+    /// in the field handle: libdca decodes `FILTS` = 1 streams to garbage.
+    /// Its own reconstruction limit (85 dB unquantised) is far below the
+    /// core's quantisation noise at any rate. `true` gives the perfect
+    /// bank (148 dB), which this crate's decoder reads per the
+    /// specification but other decoders may not.
     pub perfect_reconstruction: bool,
     /// Detect transients and send a second scale factor (`TMODE`);
     /// default `true`.
@@ -126,7 +139,7 @@ impl Default for EncoderConfig {
             layout: Layout::Surround51Side,
             bit_rate: 1_536_000,
             adpcm_codebook: None,
-            perfect_reconstruction: true,
+            perfect_reconstruction: false,
             transients: true,
         }
     }

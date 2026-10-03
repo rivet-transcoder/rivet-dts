@@ -165,12 +165,19 @@ ubuntu-latest (libdca 0.0.7), 41 streams:
 The full-rate level difference where one or two channels get the finest
 quantisers is consistent with D.2.1's step sizes being printed as integers
 × 2^-22 (21, 42, 84, … for `ABITS` 26, 25, 24, …), i.e. only to a part in a
-thousand; this crate uses the printed values. Not covered by the tool:
-`FILTS` = 1 streams (it does not decode them; every public stream is
-`FILTS` = 0, which is what this comparison uses), stereo and mono+LFE (its
-two-channel WAV output is 16-bit and clips, for the public stereo streams
-too), and 3–5 channel layouts without the LFE (its WAV output for those
-mixes channels or adds one). Those are covered by the round trips only.
+thousand; this crate uses the printed values. Stereo is compared through
+the tool's 16-bit two-channel output (`-o wav`), within its rounding.
+
+The encoder writes `FILTS` = 0 by default: C.3.6 calls that prototype the
+lossy one (`raCoeffLossy`, against `raCoeffLossLess` for `FILTS` = 1), it
+is what every public stream uses, and libdca decodes `FILTS` = 1 streams to
+garbage (probed on this encoder's streams: with the bit set its output is
+unrelated to the signal whichever bank the encoder analysed with; with it
+clear the two decoders agree as above). `perfect_reconstruction: true`
+still writes `FILTS` = 1 streams, which this crate decodes per the
+specification. Not covered by the tool: `FILTS` = 1, mono+LFE, and 3–5
+channel layouts without the LFE (its WAV output for those mixes channels
+or adds one). Those are covered by the round trips only.
 
 ## Open points in the specification
 

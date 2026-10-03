@@ -183,6 +183,43 @@ fn lower_rates_still_round_trip() {
     }
 }
 
+/// The default is `FILTS` = 0 — C.3.6's lossy bank, the one deployed
+/// decoders read (see `tests/dcadec.rs`) — and the header says which bank
+/// was used. Both banks round-trip; the non-perfect one caps the SNR near
+/// its 85 dB reconstruction limit, which only the finest quantisers (mono
+/// at the full rate) get past.
+#[test]
+fn default_filter_bank_is_filts_0_and_both_banks_round_trip() {
+    assert!(!EncoderConfig::default().perfect_reconstruction, "FILTS = 0 by default");
+    let (rate, n) = (48_000u32, 48_000usize);
+    for layout in [Layout::Mono, Layout::Stereo, Layout::Surround51Side] {
+        let input: Vec<Vec<f64>> = layout
+            .speakers()
+            .iter()
+            .enumerate()
+            .map(|(i, s)| channel_signal(i, *s == dts::Speaker::LFE, rate as f64, n))
+            .collect();
+        for perfect in [false, true] {
+            let mut cfg = EncoderConfig::new(rate, layout, 1_536_000);
+            cfg.perfect_reconstruction = perfect;
+            let e = encode(cfg, &input);
+            let mut dec = Decoder::new();
+            dec.decode(&e.frames[0]).unwrap();
+            assert_eq!(dec.info().unwrap().perfect_reconstruction, perfect, "{}: FILTS in the header", layout.name());
+            let out = decode(&e, layout, rate);
+            let worst = layout
+                .speakers()
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| **s != dts::Speaker::LFE)
+                .map(|(c, _)| snr(&input[c], &out[c], e.delay))
+                .fold(f64::INFINITY, f64::min);
+            eprintln!("{} FILTS={}: worst SNR {worst:.1} dB", layout.name(), u8::from(perfect));
+            assert!(worst >= 45.0, "{} FILTS={}: SNR {worst:.1} dB", layout.name(), u8::from(perfect));
+        }
+    }
+}
+
 /// Goertzel magnitude of `x` at `f`.
 fn tone_level(x: &[f64], f: f64, rate: f64) -> f64 {
     let w = 2.0 * PI * f / rate;
