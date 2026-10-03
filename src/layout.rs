@@ -2,15 +2,15 @@
 //!
 //! The core names its channels by `AMODE` (Table 5-4); the XXCH extension
 //! and the extension substream by loudspeaker masks (Tables 6-22, 7-10).
-//! Both are mapped onto one [`Speaker`] vocabulary (ffmpeg's names) and the
-//! output is always in the canonical order of that vocabulary — the order
-//! of the [`Speaker`] variants, which is the WAVE / ffmpeg native channel
-//! order — so a decoded frame is a [`Layout`] with nothing left implicit.
+//! Both are mapped onto one [`Speaker`] vocabulary (the conventional short
+//! names: FL, FR, FC, LFE, …) and the output is always in the canonical
+//! order of that vocabulary — the order of the [`Speaker`] variants, which
+//! is the WAVE (`WAVEFORMATEXTENSIBLE` channel mask) order — so a decoded frame is a [`Layout`] with nothing left implicit.
 
 use std::fmt;
 
-/// A speaker position. The names are ffmpeg's; the declaration order is the
-/// order channels are interleaved in.
+/// A speaker position, by its conventional short name; the declaration
+/// order is the order channels are interleaved in.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
 #[non_exhaustive]
 pub enum Speaker {
@@ -111,8 +111,8 @@ impl fmt::Debug for SpeakerList {
     }
 }
 
-/// The channel layouts the decoder outputs: the common ones by ffmpeg's
-/// name, anything else as a [`Custom`](Layout::Custom) list. The channels
+/// The channel layouts the decoder outputs: the common ones by their
+/// conventional name (`stereo`, `5.1(side)`, …), anything else as a [`Custom`](Layout::Custom) list. The channels
 /// of every layout are in canonical [`Speaker`] order.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 #[non_exhaustive]
@@ -181,7 +181,7 @@ impl Layout {
             .unwrap_or(Layout::Custom(list))
     }
 
-    /// ffmpeg's name for the layout (`"5.1(side)"`, `"stereo"`, …), or
+    /// The layout's conventional name (`"5.1(side)"`, `"stereo"`, …), or
     /// `"custom"`.
     pub fn name(&self) -> &'static str {
         match self {

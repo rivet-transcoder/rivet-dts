@@ -70,7 +70,7 @@ not take from. Everything else in this README follows from that:
 `Decoder::set_extensions` chooses which extensions to decode
 (`set_core_only(true)` is a legacy core decoder). Output is interleaved
 `f32` at ±1.0 full scale, 32 × (`NBLKS` + 1) samples per channel per frame
-(twice that with X96), in canonical speaker order (ffmpeg's / WAVE's), named
+(twice that with X96), in canonical speaker order (WAVE's), named
 by `Layout`: `mono`, `stereo`, `2.1`, `3.0`, `3.0(back)`, `3.1`, `4.0`,
 `4.1`, `quad(side)`, `5.0(side)`, `5.1(side)`, `6.0`, `6.1`, `7.0`, `7.1`,
 or `Custom` for any other speaker set. `Speaker` and `Layout` are

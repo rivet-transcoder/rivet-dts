@@ -18,9 +18,9 @@ pub const NUM_SUBBANDS: usize = 32;
 /// constant on subband 0 through at 1/(128·√2) of its value, while the
 /// subband samples are already on the PCM scale (the D.1 scale factors top
 /// out at 2^23, the LFE takes the same tables with no such factor). So the
-/// reconstruction is unity-gain only with this factor, and it is, to four
-/// decimals, the gain libavcodec's output has over the unscaled structure
-/// (`tests/dts_core.rs`).
+/// reconstruction is unity-gain only with this factor. The round trips
+/// (`tests/encoder_roundtrip.rs`) hold it to ±0.005 dB, and an independent
+/// decoder run as a black box agrees on the level (`tests/dcadec.rs`).
 const RECONSTRUCTION_GAIN: f64 = 128.0 * std::f64::consts::SQRT_2;
 
 /// `PreCalCosMod()` of Annex C.3.6: 16×16 + 16×16 cosine terms followed by
