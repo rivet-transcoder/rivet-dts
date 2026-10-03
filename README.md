@@ -1,6 +1,6 @@
 # rivet-dts
 
-[![CI](https://github.com/rivet-transcoder/rivet-dts/actions/workflows/ci.yml/badge.svg)](https://github.com/rivet-transcoder/rivet-dts/actions/workflows/ci.yml)
+[![CI](https://github.com/safewords/rivet-dts/actions/workflows/ci.yml/badge.svg)](https://github.com/safewords/rivet-dts/actions/workflows/ci.yml)
 
 A **DTS Coherent Acoustics** decoder — core, XCh, XXCH, X96, XBR and the
 DTS-HD extension substream — and a **DTS core encoder**, in Rust: no C, no
@@ -8,7 +8,7 @@ system libraries, no build script. Written from ETSI TS 102 114 (V1.6.1,
 tables cross-checked against V1.2.1 and V1.4.1), not translated from any
 other implementation, and tested against no other implementation either.
 
-Written for the **[rivet](https://github.com/rivet-transcoder/rivet)**
+Written for the **[rivet](https://github.com/safewords/rivet)**
 transcoder, where it is the DTS decoder. Usable on its own by anything that
 has DTS packets and wants PCM back, or PCM and wants DTS.
 
@@ -17,7 +17,7 @@ dependency (`thiserror`), no features.
 
 ```toml
 [dependencies]
-dts = { package = "rivet-dts", git = "https://github.com/rivet-transcoder/rivet-dts", branch = "develop" }
+dts = { package = "rivet-dts", git = "https://github.com/safewords/rivet-dts", branch = "develop" }
 ```
 
 ## Read this first: the two code books ETSI does not print
