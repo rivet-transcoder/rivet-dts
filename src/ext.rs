@@ -217,6 +217,9 @@ pub(crate) fn parse_xxch_set_header(
     if used > header_size {
         return Err(Error::Invalid("XXCH channel set header overruns its size"));
     }
+    if header_size > set_bytes.len() {
+        return Err(Error::Invalid("XXCH channel set header past its set"));
+    }
     if h.crc_chset && crc16(&set_bytes[..header_size]) != 0 {
         return Err(Error::Invalid("XXCH channel set header CRC"));
     }
@@ -578,7 +581,7 @@ pub(crate) fn decode_xbr(data: &[u8], cc: &CoreFrameCtx, targets: &mut [Vec<XbrT
         }
         active.push(a);
     }
-    if header_size > data.len() || crc16(&data[4..header_size]) != 0 {
+    if header_size < 6 || header_size > data.len() || crc16(&data[4..header_size]) != 0 {
         return Err(Error::Invalid("XBR header CRC"));
     }
     let step_table = &tables::STEP_SIZE_LOSSLESS_Q22;

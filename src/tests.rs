@@ -174,7 +174,7 @@ fn a_refused_frame_still_reports_its_layout() {
 #[test]
 fn hf_vq_subbands_use_a_supplied_book() {
     let entries: Vec<[i8; vq::HF_VQ_LEN]> =
-        (0..vq::HF_VQ_VECTORS).map(|v| std::array::from_fn(|m| ((v * 3 + m * 5) % 200) as i8 - 100)).collect();
+        (0..vq::HF_VQ_VECTORS).map(|v| std::array::from_fn(|m| (((v * 3 + m * 5) % 200) as i32 - 100) as i8)).collect();
     let book = HfVqCodebook::from_entries(&entries).unwrap();
     // One channel: SUBS 4, VQSUB 2 → subbands 2 and 3 are VQ-coded.
     let mut bits: Vec<u8> = Vec::new();
@@ -258,5 +258,42 @@ fn downmix_table_follows_its_grid() {
             let got = tables::INV_DMIX_TABLE[i - 40] as f64;
             assert!((got - inv).abs() / inv < 1e-4, "inverse index {i}: {got} vs {inv:.1}");
         }
+    }
+}
+
+/// Corrupt frames are errors, never panics: deterministic bit flips over
+/// encoder-made frames (with prediction), in every ADPCM mode.
+#[test]
+fn corrupt_frames_never_panic() {
+    let book = std::sync::Arc::new(AdpcmCodebook::private_test_book());
+    let mut cfg = EncoderConfig::new(48_000, Layout::Surround51Side, 768_000);
+    cfg.adpcm_codebook = Some(book.clone());
+    let mut enc = Encoder::new(cfg).unwrap();
+    let pcm: Vec<f32> = (0..48_00 * 6).map(|i| ((i / 6) as f32 * 0.03 * (1 + i % 6) as f32).sin() * 0.3).collect();
+    let mut frames = enc.encode(&pcm).unwrap();
+    frames.extend(enc.flush().unwrap());
+    let mut seed = 0x2545F4914F6CDD1Du64;
+    let mut rnd = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
+    for i in 0..3000 {
+        let mut p = frames[i % frames.len()].clone();
+        for _ in 0..1 + rnd() % 6 {
+            let k = (rnd() as usize) % p.len();
+            p[k] ^= 1 << (rnd() % 8);
+        }
+        if i % 7 == 0 {
+            p.truncate((rnd() as usize) % p.len() + 1);
+        }
+        let mut d = Decoder::new();
+        match i % 3 {
+            0 => {}
+            1 => d.set_adpcm_fallback(AdpcmFallback::Estimate),
+            _ => d.set_adpcm_codebook(Some(book.clone())),
+        }
+        let _ = d.decode(&p);
     }
 }

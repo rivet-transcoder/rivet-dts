@@ -1055,7 +1055,7 @@ impl Decoder {
                     for _ in 0..nsets {
                         nch.push(xr.bits(3)? as usize + 1);
                     }
-                    if header_size > data.len() || crc::crc16(&data[4..header_size]) != 0 {
+                    if header_size < 6 || header_size > data.len() || crc::crc16(&data[4..header_size]) != 0 {
                         return Err(Error::Invalid("X96 header CRC"));
                     }
                     if revno > 8 {
@@ -1071,6 +1071,9 @@ impl Decoder {
                         let mut sr = BitReader::new(bytes);
                         let hsize = sr.bits(7)? as usize + 1;
                         let s = ext::parse_x96_set_header(&mut sr, k, revno, true)?;
+                        if hsize > bytes.len() {
+                            return Err(Error::Invalid("X96 channel set header past its set"));
+                        }
                         if crc_chset && crc::crc16(&bytes[..hsize]) != 0 {
                             return Err(Error::Invalid("X96 channel set header CRC"));
                         }
