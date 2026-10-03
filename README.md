@@ -92,8 +92,10 @@ used: HF VQ, joint intensity, sum/difference, Huffman-coded `ABITS`.
 
 ## How it is checked
 
-No other implementation is involved in any test (ffmpeg is not used, as a
-library, a binary or a test oracle).
+One other implementation is used, as a black box: libdca's `dcadec`
+command-line tool decodes this crate's encoder's streams for comparison
+(below). Its source was not read. ffmpeg is not used, as a library, a
+binary, a test oracle or a source of test data.
 
 **Round trips through the encoder and decoder** (`tests/encoder_roundtrip.rs`),
 1 s of sines, multitone, noise and a chirp per channel, SNR per channel
@@ -145,9 +147,30 @@ prototype (linear phase, unit gain) and the D.11 grid; CRC-16 (Annex B)
 known answers; the encoder's analysis+synthesis reconstruction (148 dB
 with `FILTS` = 1, 85 dB with `FILTS` = 0).
 
-The four streams ffmpeg's encoder made for the previous version of this
-crate (decoded then to ~1e-6 relative RMS of ffmpeg's output) still decode
-bit-identically through the restructured core.
+**Against libdca's decoder, as a black box** (`tests/dcadec.rs`; CI
+installs `libdca-utils` and sets `DTS_REQUIRE_DCADEC`, so a missing tool
+fails the job instead of skipping). The encoder's streams — tones, a
+multitone, noise and a chirp per channel; 48, 44.1 and 32 kHz; full and
+reduced rates; transient detection on and off — are decoded by both, and
+per channel the outputs must be sample-aligned, at the same level, and
+agree to 1e-4 relative RMS once the level is divided out. Measured on
+ubuntu-latest (libdca 0.0.7), 41 streams:
+
+| | gain (theirs / ours) | relative RMS after gain |
+|---|---|---|
+| full rate (1 536 / 1 411.2 / 1 024 kb/s) | within 1e-5, but mono 0.99864 and 2.1 1.0002 | ≤ 4.3e-5 |
+| 128–768 kb/s | within 3e-6 | ≤ 2e-7 |
+| the LFE, everywhere | 1 | 0 |
+
+The full-rate level difference where one or two channels get the finest
+quantisers is consistent with D.2.1's step sizes being printed as integers
+× 2^-22 (21, 42, 84, … for `ABITS` 26, 25, 24, …), i.e. only to a part in a
+thousand; this crate uses the printed values. Not covered by the tool:
+`FILTS` = 1 streams (it does not decode them; every public stream is
+`FILTS` = 0, which is what this comparison uses), stereo and mono+LFE (its
+two-channel WAV output is 16-bit and clips, for the public stereo streams
+too), and 3–5 channel layouts without the LFE (its WAV output for those
+mixes channels or adds one). Those are covered by the round trips only.
 
 ## Open points in the specification
 
@@ -169,9 +192,10 @@ Where the text is ambiguous the choice made is documented in the code:
   Untested: no public stream carries an embedded XXCH downmix.
 - **XBR** residuals are added after joint intensity and sum/difference.
 - **Huffman-coded `ABITS`**: D.5.6 labels its levels 1–12 as `ABITS`
-  values and they are used as such (ffmpeg's encoder uses them at 256 kb/s,
-  and this crate's previous version decoded those streams to ~1e-6
-  relative RMS of ffmpeg's own output).
+  values and they are used as such. This crate's encoder does not use
+  them; an earlier version of this crate was compared, on streams that
+  do, with another decoder to ~1e-6 relative RMS, a comparison no longer
+  run. The public streams use them and decode to plausible levels.
 - **`ADJ`** is indexed by `ABITS` (Table 5-29 writes
   `arADJ[ch][SEL[ch][nABITS-1]]`, which cannot be meant).
 - **XCh's** downmix gain is taken as exactly 1/√2 (D.11's −3 dB entry).

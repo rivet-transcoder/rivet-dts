@@ -24,8 +24,11 @@ included and were not taken from anywhere. The crate accepts them from a
 caller who holds them; AdpcmCodebook::private_test_book() is a code book of
 stable predictors constructed in this crate, not D.10.1.
 
-No other implementation is used in testing, as a library, a program or a
-test oracle. The public sample streams the sample tests decode are fetched
+One other implementation is used in testing, as a black-box program
+only: libdca's dcadec command-line tool decodes this crate's encoder's
+streams and its output is compared with this crate's decoder's
+(tests/dcadec.rs). libdca's source was not read. No implementation is
+used as a library. The public sample streams the sample tests decode are fetched
 at test time, as data, from https://streams.videolan.org/samples/A-codecs/DTS/ and
 checked against the SHA-256 sums in tests/samples.rs; they are not
 distributed with this crate.

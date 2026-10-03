@@ -55,6 +55,22 @@ jobs:
           DTS_SAMPLES_DIR: samples
           DTS_REQUIRE_SAMPLES: "1"
 
+  # The decoder against an independent one, libdca's `dcadec` (VideoLAN),
+  # run as a black box on this crate's encoder's streams (tests/dcadec.rs).
+  # Without the tool those tests skip, so this job installs it and requires it.
+  dcadec:
+    name: against libdca's dcadec (black box)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libdca-utils
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests
+        run: cargo test --release --test dcadec -- --nocapture
+        env:
+          DTS_REQUIRE_DCADEC: "1"
+
   msrv:
     name: MSRV (1.99)
     runs-on: ubuntu-latest
