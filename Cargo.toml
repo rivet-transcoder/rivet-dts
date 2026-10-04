@@ -22,3 +22,6 @@ thiserror = "2"
 
 [features]
 default = []
+# Compiles out the AVX2 copies of the vectorised kernels (the portable ones
+# give bit-identical results); CI tests this path too.
+force-scalar = []

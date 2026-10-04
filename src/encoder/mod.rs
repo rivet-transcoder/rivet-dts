@@ -158,14 +158,34 @@ struct Band {
     tmode: bool,
     /// ADPCM: `(PVQ, coefficients)`.
     pred: Option<(usize, [f64; ADPCM_ORDER])>,
-    /// `opts[a]` for `ABITS` = a; `None` where infeasible.
-    opts: Vec<Opt>,
+    /// `opts[a]` for `ABITS` = a, made when first needed ([`Band::ensure`]):
+    /// the allocation only ever looks at a few `ABITS` per band.
+    opts: Vec<Option<Opt>>,
+    /// The band's samples and prediction history, which the options are
+    /// made from.
+    x: [f64; SUBBAND_SAMPLES],
+    hist: [f64; ADPCM_ORDER],
     /// Masking threshold over the frame's 16 samples (energy).
     mask: f64,
     /// Current allocation.
     a: usize,
     /// Cannot be given more bits this frame.
     frozen: bool,
+}
+
+impl Band {
+    /// The option at `ABITS` = `a`, which must have been made.
+    fn opt(&self, a: usize) -> &Opt {
+        self.opts[a].as_ref().expect("an ABITS option looked at before it was made")
+    }
+
+    /// The option at `ABITS` = `a`, made now if it was not yet.
+    fn ensure(&mut self, a: usize) -> &Opt {
+        if self.opts[a].is_none() {
+            self.opts[a] = Some(make_opt(&self.x, a, self.tmode, self.pred.map(|p| p.1), &self.hist));
+        }
+        self.opt(a)
+    }
 }
 
 /// One `ABITS` choice for a band.
@@ -398,7 +418,7 @@ impl Encoder {
         // History for the next frame's prediction.
         for (c, chb) in bands.iter().enumerate() {
             for (k, b) in chb.iter().enumerate() {
-                let rec = if b.a > 0 { b.opts[b.a].rec } else { [0.0; SUBBAND_SAMPLES] };
+                let rec = if b.a > 0 { b.opt(b.a).rec } else { [0.0; SUBBAND_SAMPLES] };
                 self.hist[c][k] = std::array::from_fn(|n| rec[SUBBAND_SAMPLES - 1 - n]);
             }
         }
@@ -435,8 +455,18 @@ impl Encoder {
                 let pred = self.cfg.adpcm_codebook.as_deref().and_then(|book| {
                     adpcm::best_vector(book, &self.hist[c][k], &xk).map(|(pvq, _)| (pvq, book.coefficients(pvq)))
                 });
-                let opts = (0..=MAX_ABITS).map(|a| make_opt(&xk, a, tmode, pred.map(|p| p.1), &self.hist[c][k])).collect();
-                Band { tmode, pred, opts, mask: mask[k], a: 0, frozen: false }
+                let mut b = Band {
+                    tmode,
+                    pred,
+                    opts: (0..=MAX_ABITS).map(|_| None).collect(),
+                    x: xk,
+                    hist: self.hist[c][k],
+                    mask: mask[k],
+                    a: 0,
+                    frozen: false,
+                };
+                b.ensure(0);
+                b
             })
             .collect()
     }
@@ -483,7 +513,7 @@ impl Encoder {
                 let mut v = Vec::new();
                 for b in &chb[..n] {
                     if b.a > 0 {
-                        let o = &b.opts[b.a];
+                        let o = b.opt(b.a);
                         v.push(o.sf[0]);
                         if b.tmode {
                             v.push(o.sf[1]);
@@ -595,7 +625,7 @@ impl Encoder {
                         continue;
                     }
                     let coding = coding_for(b.a, s);
-                    coding.put(&mut w, &b.opts[b.a].q[ssf * 8..ssf * 8 + 8]);
+                    coding.put(&mut w, &b.opt(b.a).q[ssf * 8..ssf * 8 + 8]);
                 }
             }
         }
@@ -706,7 +736,7 @@ fn group_bits(chb: &[Band], a: usize) -> u64 {
         .map(|sel| {
             let mut sum = 0u64;
             for b in chb.iter().filter(|b| b.a == a) {
-                let c = b.opts[a].cost[sel];
+                let c = b.opt(a).cost[sel];
                 if c == u32::MAX {
                     return u64::MAX;
                 }
@@ -732,7 +762,7 @@ fn choose_sel(chb: &[Band]) -> [usize; 10] {
             let mut any = false;
             for b in chb.iter().filter(|b| b.a == a) {
                 any = true;
-                let c = b.opts[a].cost[sel];
+                let c = b.opt(a).cost[sel];
                 sum = if c == u32::MAX { u64::MAX } else { sum.saturating_add(c as u64) };
             }
             if !any {
@@ -774,42 +804,92 @@ fn choose_shuff(list: &[usize]) -> u32 {
 
 /// Greedy noise-to-mask allocation within `budget` bits (the bits left
 /// after [`Encoder::fixed_bits`]).
+///
+/// Each step raises the band whose noise is furthest above its mask (the
+/// first such in channel and band order) to its next useful `ABITS`, if
+/// the frame still fits. Only that band changes per step, so its
+/// noise-to-mask ratio is kept per band, and each channel keeps, per
+/// `ABITS` and `SEL`, the total cost of its bands at that `ABITS` (and how
+/// many cannot be coded so): the group sizes of [`group_bits`] follow from
+/// those without visiting the other bands. The choices are the same, step
+/// for step, as scanning every band and summing every group each time.
 fn allocate(bands: &mut [Vec<Band>], budget: usize) {
     let mut groups: Vec<[u64; MAX_ABITS + 1]> = vec![[0; MAX_ABITS + 1]; bands.len()];
     let mut used: u64 = 0;
-    loop {
-        // The band whose noise is furthest above its mask and can grow.
-        let mut best: Option<(usize, usize, f64)> = None;
-        for (c, chb) in bands.iter().enumerate() {
-            for (k, b) in chb.iter().enumerate() {
-                if b.frozen || b.a >= MAX_ABITS {
-                    continue;
-                }
-                let noise = b.opts[b.a].noise;
-                if noise <= 0.0 {
-                    continue;
-                }
-                let nmr = noise / b.mask.max(1e-30);
-                if best.is_none_or(|(_, _, v)| nmr > v) {
-                    best = Some((c, k, nmr));
-                }
+    // The ratio each band competes with (`None`: it cannot grow).
+    let ratio = |b: &Band| -> Option<f64> {
+        if b.frozen || b.a >= MAX_ABITS {
+            return None;
+        }
+        let noise = b.opt(b.a).noise;
+        if noise <= 0.0 {
+            return None;
+        }
+        Some(noise / b.mask.max(1e-30))
+    };
+    let mut nmr: Vec<Vec<Option<f64>>> = bands.iter().map(|chb| chb.iter().map(ratio).collect()).collect();
+    // tally[c][a][sel] = (sum of the codable costs, count of uncodable ones)
+    // over channel c's bands at ABITS a > 0. Every band starts at 0.
+    let mut tally: Vec<Vec<Vec<(u64, u32)>>> = bands
+        .iter()
+        .map(|_| (0..=MAX_ABITS).map(|a| vec![(0, 0); if a == 0 { 0 } else { entropy::codings(a as u32).len() }]).collect())
+        .collect();
+    let shift = |t: &mut [(u64, u32)], cost: &[u32], add: bool| {
+        for (slot, &c) in t.iter_mut().zip(cost) {
+            match (c == u32::MAX, add) {
+                (true, true) => slot.1 += 1,
+                (true, false) => slot.1 -= 1,
+                (false, true) => slot.0 += u64::from(c),
+                (false, false) => slot.0 -= u64::from(c),
             }
         }
-        let Some((c, k, _)) = best else { break };
+    };
+    let group = |t: &[(u64, u32)], a: usize| -> u64 {
+        if a == 0 {
+            return 0;
+        }
+        entropy::codings(a as u32)
+            .iter()
+            .zip(t)
+            .map(|(coding, &(sum, bad))| {
+                if bad > 0 {
+                    return u64::MAX;
+                }
+                let adj = if a <= 10 && coding.is_huffman() && sum > 0 { 2 } else { 0 };
+                sum + adj
+            })
+            .min()
+            .unwrap_or(u64::MAX)
+    };
+    let mut leader = Leader::new(&nmr);
+    // Each step: the band whose noise is furthest above its mask and can
+    // grow.
+    while let Some((c, k)) = leader.best(&nmr) {
         let from = bands[c][k].a;
         // Next ABITS that is codable and lowers the noise.
+        let band = &mut bands[c][k];
+        let from_noise = band.opt(from).noise;
         let to = (from + 1..=MAX_ABITS).find(|&a| {
-            let o = &bands[c][k].opts[a];
-            o.cost.iter().any(|&v| v != u32::MAX) && o.noise < bands[c][k].opts[from].noise
+            let o = band.ensure(a);
+            o.cost.iter().any(|&v| v != u32::MAX) && o.noise < from_noise
         });
         let Some(to) = to else {
             bands[c][k].frozen = true;
+            nmr[c][k] = None;
+            leader.update(&nmr, c, k);
             continue;
         };
-        bands[c][k].a = to;
-        let new_from = group_bits(&bands[c], from);
-        let new_to = group_bits(&bands[c], to);
-        let side = if from == 0 { side_bits(&bands[c][k]) as u64 } else { 0 };
+        let band = &mut bands[c][k];
+        band.a = to;
+        if from > 0 {
+            shift(&mut tally[c][from], &band.opt(from).cost, false);
+        }
+        shift(&mut tally[c][to], &band.opt(to).cost, true);
+        let new_from = group(&tally[c][from], from);
+        let new_to = group(&tally[c][to], to);
+        debug_assert_eq!((new_from, new_to), (group_bits(&bands[c], from), group_bits(&bands[c], to)));
+        let band = &mut bands[c][k];
+        let side = if from == 0 { side_bits(band) as u64 } else { 0 };
         let next = used
             .checked_sub(groups[c][from] + groups[c][to])
             .and_then(|u| u.checked_add(new_from.checked_add(new_to)?))
@@ -821,10 +901,85 @@ fn allocate(bands: &mut [Vec<Band>], budget: usize) {
                 groups[c][to] = new_to;
             }
             _ => {
-                bands[c][k].a = from;
-                bands[c][k].frozen = true;
+                shift(&mut tally[c][to], &band.opt(to).cost, false);
+                if from > 0 {
+                    shift(&mut tally[c][from], &band.opt(from).cost, true);
+                }
+                band.a = from;
+                band.frozen = true;
             }
         }
+        nmr[c][k] = ratio(&bands[c][k]);
+        leader.update(&nmr, c, k);
+    }
+}
+
+/// The allocation's choice of band, kept up to date as single bands
+/// change: a tournament tree over the bands in channel-then-band order
+/// whose matches keep the earlier entrant unless the later one is strictly
+/// greater, which is what a first-to-last scan for the greatest ratio
+/// picks. (A NaN ratio would make that not associative, so with any NaN
+/// present the choice falls back to the scan itself.)
+struct Leader {
+    width: usize,
+    tree: Vec<Option<(f64, usize)>>,
+    nans: usize,
+}
+
+impl Leader {
+    fn new(nmr: &[Vec<Option<f64>>]) -> Self {
+        let width = nmr.first().map_or(1, Vec::len);
+        let n = (nmr.len() * width).next_power_of_two();
+        let mut l = Self { width, tree: vec![None; 2 * n], nans: 0 };
+        for (c, row) in nmr.iter().enumerate() {
+            for (k, &r) in row.iter().enumerate() {
+                l.tree[n + c * width + k] = r.map(|v| (v, c * width + k));
+                l.nans += usize::from(r.is_some_and(f64::is_nan));
+            }
+        }
+        for i in (1..n).rev() {
+            l.tree[i] = Self::play(l.tree[2 * i], l.tree[2 * i + 1]);
+        }
+        l
+    }
+
+    fn play(a: Option<(f64, usize)>, b: Option<(f64, usize)>) -> Option<(f64, usize)> {
+        match (a, b) {
+            (Some(x), Some(y)) => Some(if y.0 > x.0 { y } else { x }),
+            (x, None) => x,
+            (None, y) => y,
+        }
+    }
+
+    /// Band `(c, k)`'s ratio changed in `nmr`.
+    fn update(&mut self, nmr: &[Vec<Option<f64>>], c: usize, k: usize) {
+        let n = self.tree.len() / 2;
+        let mut i = n + c * self.width + k;
+        let was_nan = self.tree[i].is_some_and(|(v, _)| v.is_nan());
+        let r = nmr[c][k];
+        self.nans = self.nans - usize::from(was_nan) + usize::from(r.is_some_and(f64::is_nan));
+        self.tree[i] = r.map(|v| (v, c * self.width + k));
+        while i > 1 {
+            i /= 2;
+            self.tree[i] = Self::play(self.tree[2 * i], self.tree[2 * i + 1]);
+        }
+    }
+
+    fn best(&self, nmr: &[Vec<Option<f64>>]) -> Option<(usize, usize)> {
+        if self.nans > 0 {
+            let mut best: Option<(usize, usize, f64)> = None;
+            for (c, row) in nmr.iter().enumerate() {
+                for (k, &r) in row.iter().enumerate() {
+                    if let Some(r) = r
+                        && best.is_none_or(|(_, _, v)| r > v)
+                    {
+                        best = Some((c, k, r));
+                    }
+                }
+            }
+            return best.map(|(c, k, _)| (c, k));
+        }
+        self.tree[1].map(|(_, i)| (i / self.width, i % self.width))
     }
 }
 

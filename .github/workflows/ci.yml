@@ -29,6 +29,11 @@ jobs:
         run: cargo build --release
       - name: Tests
         run: cargo test --release
+      # The portable kernels alone (the run-time AVX2 copies compiled out); they
+      # give bit-identical results, so every test must pass unchanged.
+      - name: Tests (force-scalar)
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'ubuntu-24.04-arm'
+        run: cargo test --release --features force-scalar
       - name: Tests with overflow checks (debug)
         run: cargo test
 
@@ -51,6 +56,11 @@ jobs:
       - run: bash tools/fetch_samples.sh samples
       - name: Tests
         run: cargo test --release --test samples -- --nocapture
+        env:
+          DTS_SAMPLES_DIR: samples
+          DTS_REQUIRE_SAMPLES: "1"
+      - name: Tests (force-scalar)
+        run: cargo test --release --features force-scalar --test samples
         env:
           DTS_SAMPLES_DIR: samples
           DTS_REQUIRE_SAMPLES: "1"
@@ -90,6 +100,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets --features force-scalar -- -D warnings
       - run: cargo doc --no-deps
         env:
           RUSTDOCFLAGS: -D warnings

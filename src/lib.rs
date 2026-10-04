@@ -73,6 +73,7 @@ mod exss;
 mod ext;
 mod huffman;
 mod layout;
+mod simd;
 mod synth;
 pub mod tables;
 #[cfg(test)]

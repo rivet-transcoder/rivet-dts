@@ -98,8 +98,9 @@ impl RefSynth {
 
 /// The matched analysis bank for one prototype.
 pub struct AnalysisBank {
-    /// `g[k][n]`, pre-multiplied by `c`.
-    g: Vec<[f64; IR_LEN]>,
+    /// `g[k][n]`, pre-multiplied by `c`, stored by `n` (all bands' taps
+    /// for one input sample together).
+    g: Vec<[f64; BANDS]>,
     /// Mean energy of the (unscaled) synthesis functions, `Σ_n g_k[n]²`:
     /// the factor from subband-domain noise power to output noise energy.
     pub synthesis_energy: f64,
@@ -136,6 +137,7 @@ impl AnalysisBank {
                 *v /= a;
             }
         }
+        let g = (0..IR_LEN).map(|n| std::array::from_fn(|k| g[k][n])).collect();
         Self { g, synthesis_energy }
     }
 
@@ -149,10 +151,21 @@ impl AnalysisBank {
     /// One block of subband samples: `x` holds `IR_LEN` input samples
     /// starting at the block's first sample.
     pub fn analyse(&self, x: &[f64], out: &mut [f64; BANDS]) {
-        debug_assert!(x.len() >= IR_LEN);
-        for (o, gk) in out.iter_mut().zip(&self.g) {
-            *o = gk.iter().zip(x).map(|(a, b)| a * b).sum();
+        analyse(&self.g, &x[..IR_LEN], out);
+    }
+}
+
+crate::simd::avx2_or_portable! {
+    /// `out[k] = Σ_n g_k[n] x[n]`, each band's sum in order of `n` (from
+    /// -0.0, as `Iterator::sum` starts) but all bands at once.
+    fn analyse(g: &[[f64; BANDS]], x: &[f64], out: &mut [f64; BANDS]) {
+        let mut acc = [-0.0f64; BANDS];
+        for (gn, &xn) in g.iter().zip(x) {
+            for k in 0..BANDS {
+                acc[k] += gn[k] * xn;
+            }
         }
+        *out = acc;
     }
 }
 
@@ -271,6 +284,34 @@ impl LfeDecimator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn noise(len: usize, seed: u64, scale: f64) -> Vec<f64> {
+        let mut s = seed;
+        (0..len)
+            .map(|_| {
+                s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+                ((s >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * scale
+            })
+            .collect()
+    }
+
+    /// The bank's all-bands-at-once sums equal each band's own `Iterator::sum`
+    /// of products, bit for bit.
+    #[test]
+    fn analysis_matches_per_band_sums() {
+        for perfect in [false, true] {
+            let bank = AnalysisBank::get(perfect);
+            for (seed, scale) in [(1u64, 1.0), (2, 8_388_608.0), (3, 1e-300), (4, 0.0)] {
+                let x = noise(IR_LEN + 5, seed, scale);
+                let mut out = [0.0f64; BANDS];
+                bank.analyse(&x, &mut out);
+                for (k, &o) in out.iter().enumerate() {
+                    let want: f64 = (0..IR_LEN).map(|n| bank.g[n][k] * x[n]).sum();
+                    assert_eq!(o.to_bits(), want.to_bits(), "band {k} seed {seed}");
+                }
+            }
+        }
+    }
     use crate::synth::Qmf;
 
     /// The LFE decimator against the decoder's interpolator: flat within
