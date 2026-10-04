@@ -4,9 +4,9 @@
 
 use std::sync::LazyLock;
 
+use super::Error;
 use super::bits::BitReader;
 use super::tables::{self, HuffEntry};
-use super::Error;
 
 /// A Huffman code book indexed for decoding: for every code length, the
 /// `(code, level)` pairs of that length. The books are small (≤ 129
@@ -38,7 +38,9 @@ impl Codebook {
                 return Ok(level);
             }
         }
-        Err(Error::Invalid("Huffman code not in book (complete code book cannot fail — table defect)"))
+        Err(Error::Invalid(
+            "Huffman code not in book (complete code book cannot fail — table defect)",
+        ))
     }
 }
 
@@ -174,7 +176,11 @@ pub enum SampleCoding {
 /// Resolve `(ABITS, SEL)` to a coding. `sel` is `SEL[ch][ABITS-1]` — for
 /// `ABITS` > 10 it is not transmitted and must be 0.
 pub fn sample_coding(abits: u32, sel: u32) -> Result<SampleCoding, Error> {
-    fn pick(books: &[&'static Codebook], sel: u32, last: SampleCoding) -> Result<SampleCoding, Error> {
+    fn pick(
+        books: &[&'static Codebook],
+        sel: u32,
+        last: SampleCoding,
+    ) -> Result<SampleCoding, Error> {
         match books.get(sel as usize) {
             Some(b) => Ok(SampleCoding::Huffman(b)),
             None if sel as usize == books.len() => Ok(last),
@@ -200,9 +206,21 @@ pub fn sample_coding(abits: u32, sel: u32) -> Result<SampleCoding, Error> {
         7 => pick(&[&A25, &B25, &C25, &D25, &E25, &F25, &G25], sel, block(25)),
         // "33 or 32", "65 or 64", "129 or 128" levels: the NFE form is the
         // even count, i.e. ABITS-3 bits of two's complement.
-        8 => pick(&[&A33, &B33, &C33, &D33, &E33, &F33, &G33], sel, SampleCoding::Raw { bits: 5 }),
-        9 => pick(&[&A65, &B65, &C65, &D65, &E65, &F65, &G65], sel, SampleCoding::Raw { bits: 6 }),
-        10 => pick(&[&A129, &B129, &C129, &D129, &E129, &F129, &G129], sel, SampleCoding::Raw { bits: 7 }),
+        8 => pick(
+            &[&A33, &B33, &C33, &D33, &E33, &F33, &G33],
+            sel,
+            SampleCoding::Raw { bits: 5 },
+        ),
+        9 => pick(
+            &[&A65, &B65, &C65, &D65, &E65, &F65, &G65],
+            sel,
+            SampleCoding::Raw { bits: 6 },
+        ),
+        10 => pick(
+            &[&A129, &B129, &C129, &D129, &E129, &F129, &G129],
+            sel,
+            SampleCoding::Raw { bits: 7 },
+        ),
         11..=26 => Ok(SampleCoding::Raw { bits: abits - 3 }),
         _ => Err(Error::Invalid("ABITS above 26")),
     }
@@ -299,16 +317,52 @@ mod tests {
     #[test]
     fn table_5_26_selection() {
         assert!(matches!(sample_coding(0, 0).unwrap(), SampleCoding::None));
-        assert!(matches!(sample_coding(1, 0).unwrap(), SampleCoding::Huffman(_)));
-        assert!(matches!(sample_coding(1, 1).unwrap(), SampleCoding::Block { levels: 3, bits: 7 }));
-        assert!(matches!(sample_coding(2, 3).unwrap(), SampleCoding::Block { levels: 5, bits: 10 }));
-        assert!(matches!(sample_coding(7, 7).unwrap(), SampleCoding::Block { levels: 25, bits: 19 }));
-        assert!(matches!(sample_coding(7, 6).unwrap(), SampleCoding::Huffman(_)));
-        assert!(matches!(sample_coding(8, 7).unwrap(), SampleCoding::Raw { bits: 5 }));
-        assert!(matches!(sample_coding(10, 7).unwrap(), SampleCoding::Raw { bits: 7 }));
-        assert!(matches!(sample_coding(11, 0).unwrap(), SampleCoding::Raw { bits: 8 }));
-        assert!(matches!(sample_coding(26, 0).unwrap(), SampleCoding::Raw { bits: 23 }));
+        assert!(matches!(
+            sample_coding(1, 0).unwrap(),
+            SampleCoding::Huffman(_)
+        ));
+        assert!(matches!(
+            sample_coding(1, 1).unwrap(),
+            SampleCoding::Block { levels: 3, bits: 7 }
+        ));
+        assert!(matches!(
+            sample_coding(2, 3).unwrap(),
+            SampleCoding::Block {
+                levels: 5,
+                bits: 10
+            }
+        ));
+        assert!(matches!(
+            sample_coding(7, 7).unwrap(),
+            SampleCoding::Block {
+                levels: 25,
+                bits: 19
+            }
+        ));
+        assert!(matches!(
+            sample_coding(7, 6).unwrap(),
+            SampleCoding::Huffman(_)
+        ));
+        assert!(matches!(
+            sample_coding(8, 7).unwrap(),
+            SampleCoding::Raw { bits: 5 }
+        ));
+        assert!(matches!(
+            sample_coding(10, 7).unwrap(),
+            SampleCoding::Raw { bits: 7 }
+        ));
+        assert!(matches!(
+            sample_coding(11, 0).unwrap(),
+            SampleCoding::Raw { bits: 8 }
+        ));
+        assert!(matches!(
+            sample_coding(26, 0).unwrap(),
+            SampleCoding::Raw { bits: 23 }
+        ));
         assert!(sample_coding(27, 0).is_err());
-        assert!(sample_coding(1, 2).is_err(), "SEL past the group is invalid");
+        assert!(
+            sample_coding(1, 2).is_err(),
+            "SEL past the group is invalid"
+        );
     }
 }

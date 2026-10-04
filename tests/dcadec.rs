@@ -44,17 +44,23 @@ fn dcadec() -> Option<String> {
         "DTS_REQUIRE_DCADEC is set but `{bin}` cannot be run"
     );
     if !ok {
-        eprintln!("`{bin}` not found: skipping the comparison with libdca (set DCADEC or put dcadec on PATH)");
+        eprintln!(
+            "`{bin}` not found: skipping the comparison with libdca (set DCADEC or put dcadec on PATH)"
+        );
     }
     ok.then_some(bin)
 }
 
 /// Deterministic white noise in [-1, 1).
 fn noise(seed: u64, n: usize) -> Vec<f64> {
-    let mut s = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let mut s = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (0..n)
         .map(|_| {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 11) as f64 / (1u64 << 53) as f64) * 2.0 - 1.0
         })
         .collect()
@@ -66,7 +72,9 @@ fn noise(seed: u64, n: usize) -> Vec<f64> {
 fn channel_signal(kind: usize, is_lfe: bool, rate: f64, n: usize) -> Vec<f64> {
     let t = |i: usize| i as f64 / rate;
     if is_lfe {
-        return (0..n).map(|i| 0.4 * (2.0 * PI * 40.0 * t(i)).sin() + 0.2 * (2.0 * PI * 90.0 * t(i)).sin()).collect();
+        return (0..n)
+            .map(|i| 0.4 * (2.0 * PI * 40.0 * t(i)).sin() + 0.2 * (2.0 * PI * 90.0 * t(i)).sin())
+            .collect();
     }
     let f0 = 300.0 + 170.0 * kind as f64;
     // A little noise under every signal makes the alignment unambiguous.
@@ -74,23 +82,45 @@ fn channel_signal(kind: usize, is_lfe: bool, rate: f64, n: usize) -> Vec<f64> {
     let tonal: Vec<f64> = match kind % 5 {
         0 => (0..n).map(|i| 0.5 * (2.0 * PI * f0 * t(i)).sin()).collect(),
         1 => (0..n)
-            .map(|i| [220.0, 1000.0, 3150.0, 7000.0].iter().map(|f| 0.12 * (2.0 * PI * f * t(i)).sin()).sum())
+            .map(|i| {
+                [220.0, 1000.0, 3150.0, 7000.0]
+                    .iter()
+                    .map(|f| 0.12 * (2.0 * PI * f * t(i)).sin())
+                    .sum()
+            })
             .collect(),
         2 => noise(kind as u64 + 7, n).iter().map(|v| 0.25 * v).collect(),
         3 => {
             let dur = n as f64 / rate;
-            (0..n).map(|i| 0.3 * (2.0 * PI * (100.0 * t(i) + (14_900.0 / (2.0 * dur)) * t(i) * t(i))).sin()).collect()
+            (0..n)
+                .map(|i| {
+                    0.3 * (2.0 * PI * (100.0 * t(i) + (14_900.0 / (2.0 * dur)) * t(i) * t(i))).sin()
+                })
+                .collect()
         }
-        _ => (0..n).map(|i| 0.4 * (2.0 * PI * f0 * 2.5 * t(i)).sin() * (2.0 * PI * 3.0 * t(i)).cos()).collect(),
+        _ => (0..n)
+            .map(|i| 0.4 * (2.0 * PI * f0 * 2.5 * t(i)).sin() * (2.0 * PI * 3.0 * t(i)).cos())
+            .collect(),
     };
-    tonal.iter().zip(&floor).map(|(a, b)| a + 0.05 * b).collect()
+    tonal
+        .iter()
+        .zip(&floor)
+        .map(|(a, b)| a + 0.05 * b)
+        .collect()
 }
 
 /// Every core arrangement (AMODE 0, 2, 5–9), with and without the LFE.
 fn all_layouts() -> Vec<Layout> {
     use Speaker::*;
-    let cores: [&[Speaker]; 7] =
-        [&[FC], &[FL, FR], &[FC, FL, FR], &[FL, FR, BC], &[FC, FL, FR, BC], &[FL, FR, SL, SR], &[FC, FL, FR, SL, SR]];
+    let cores: [&[Speaker]; 7] = [
+        &[FC],
+        &[FL, FR],
+        &[FC, FL, FR],
+        &[FL, FR, BC],
+        &[FC, FL, FR, BC],
+        &[FL, FR, SL, SR],
+        &[FC, FL, FR, SL, SR],
+    ];
     let mut v = Vec::new();
     for c in cores {
         v.push(Layout::from_speakers(c));
@@ -107,10 +137,15 @@ fn encode_and_decode(cfg: EncoderConfig, seconds: f64) -> (Vec<u8>, Vec<Vec<f64>
     let rate = cfg.sample_rate;
     let n = (rate as f64 * seconds) as usize;
     let speakers = layout.speakers();
-    let input: Vec<Vec<f64>> =
-        speakers.iter().enumerate().map(|(i, s)| channel_signal(i, *s == Speaker::LFE, rate as f64, n)).collect();
+    let input: Vec<Vec<f64>> = speakers
+        .iter()
+        .enumerate()
+        .map(|(i, s)| channel_signal(i, *s == Speaker::LFE, rate as f64, n))
+        .collect();
     let mut enc = Encoder::new(cfg).expect("valid configuration");
-    let inter: Vec<f32> = (0..n).flat_map(|i| input.iter().map(move |c| c[i] as f32)).collect();
+    let inter: Vec<f32> = (0..n)
+        .flat_map(|i| input.iter().map(move |c| c[i] as f32))
+        .collect();
     let mut frames = enc.encode(&inter).unwrap();
     frames.extend(enc.flush().unwrap());
     let mut dec = Decoder::new();
@@ -137,7 +172,10 @@ fn read_wav(b: &[u8]) -> (u32, Vec<Vec<f64>>) {
         }
         return (48_000, out);
     }
-    assert!(b.len() >= 12 && &b[..4] == b"RIFF" && &b[8..12] == b"WAVE", "not a WAVE file");
+    assert!(
+        b.len() >= 12 && &b[..4] == b"RIFF" && &b[8..12] == b"WAVE",
+        "not a WAVE file"
+    );
     let u16le = |p: usize| u16::from_le_bytes([b[p], b[p + 1]]);
     let u32le = |p: usize| u32::from_le_bytes([b[p], b[p + 1], b[p + 2], b[p + 3]]);
     let (mut fmt, mut chans, mut rate, mut bits) = (0u16, 0usize, 0u32, 0u16);
@@ -156,7 +194,11 @@ fn read_wav(b: &[u8]) -> (u32, Vec<Vec<f64>>) {
             }
         } else if id == b"data" {
             // Tools that write to a pipe leave the size unset: read to the end.
-            let end = if len == 0 || body + len > b.len() { b.len() } else { body + len };
+            let end = if len == 0 || body + len > b.len() {
+                b.len()
+            } else {
+                body + len
+            };
             let data = &b[body..end];
             let mut out = vec![Vec::new(); chans];
             match (fmt, bits) {
@@ -188,7 +230,12 @@ fn energy(x: &[f64]) -> f64 {
 fn rel_rms(ours: &[f64], theirs: &[f64], lag: isize, gain: f64, edge: usize) -> f64 {
     let n = ours.len().min(theirs.len());
     let (mut e, mut s) = (0.0, 0.0);
-    for (i, o) in ours.iter().enumerate().take(n.saturating_sub(edge)).skip(edge) {
+    for (i, o) in ours
+        .iter()
+        .enumerate()
+        .take(n.saturating_sub(edge))
+        .skip(edge)
+    {
         let j = i as isize + lag;
         if j < 0 || j as usize >= theirs.len() {
             continue;
@@ -203,7 +250,12 @@ fn rel_rms(ours: &[f64], theirs: &[f64], lag: isize, gain: f64, edge: usize) -> 
 fn gain(ours: &[f64], theirs: &[f64], lag: isize, edge: usize) -> f64 {
     let n = ours.len().min(theirs.len());
     let (mut x, mut s) = (0.0, 0.0);
-    for (i, o) in ours.iter().enumerate().take(n.saturating_sub(edge)).skip(edge) {
+    for (i, o) in ours
+        .iter()
+        .enumerate()
+        .take(n.saturating_sub(edge))
+        .skip(edge)
+    {
         let j = i as isize + lag;
         if j >= 0 && (j as usize) < theirs.len() {
             x += theirs[j as usize] * o;
@@ -221,7 +273,11 @@ fn compare(bin: &str, cfg: EncoderConfig, dir: &Path) -> Result<Agreement, Strin
         cfg.layout.name(),
         cfg.sample_rate,
         cfg.bit_rate,
-        if cfg.perfect_reconstruction { " FILTS=1" } else { "" },
+        if cfg.perfect_reconstruction {
+            " FILTS=1"
+        } else {
+            ""
+        },
         if cfg.transients { "" } else { " no-transients" }
     );
     let rate = cfg.sample_rate;
@@ -231,21 +287,42 @@ fn compare(bin: &str, cfg: EncoderConfig, dir: &Path) -> Result<Agreement, Strin
     let (stream, ours) = encode_and_decode(cfg, 1.0);
     let mut dec = Decoder::new();
     dec.decode(&stream).unwrap();
-    assert_eq!(dec.info().unwrap().perfect_reconstruction, filts, "{label}: FILTS");
-    let path = dir.join(format!("{}.dts", label.replace(|c: char| !c.is_ascii_alphanumeric(), "_")));
+    assert_eq!(
+        dec.info().unwrap().perfect_reconstruction,
+        filts,
+        "{label}: FILTS"
+    );
+    let path = dir.join(format!(
+        "{}.dts",
+        label.replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+    ));
     std::fs::write(&path, &stream).unwrap();
     let mode = if speakers.len() == 2 { "wav" } else { "wav6" };
-    let out = Command::new(bin).args(["-o", mode, "-r"]).arg(&path).output().expect("run dcadec");
-    assert!(out.status.success(), "{label}: dcadec failed: {}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new(bin)
+        .args(["-o", mode, "-r"])
+        .arg(&path)
+        .output()
+        .expect("run dcadec");
+    assert!(
+        out.status.success(),
+        "{label}: dcadec failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let (their_rate, theirs) = read_wav(&out.stdout);
     let _ = std::fs::remove_file(&path);
     if their_rate != rate {
         return Err(format!("{label}: dcadec's output is at {their_rate} Hz"));
     }
     // Their channels that carry anything.
-    let live: Vec<usize> = (0..theirs.len()).filter(|&c| energy(&theirs[c]) > 1e-9).collect();
+    let live: Vec<usize> = (0..theirs.len())
+        .filter(|&c| energy(&theirs[c]) > 1e-9)
+        .collect();
     if live.len() != speakers.len() {
-        return Err(format!("{label}: dcadec output {} live channels of {}", live.len(), theirs.len()));
+        return Err(format!(
+            "{label}: dcadec output {} live channels of {}",
+            live.len(),
+            theirs.len()
+        ));
     }
 
     // The delay between the decoders, from the first non-LFE channel.
@@ -253,7 +330,13 @@ fn compare(bin: &str, cfg: EncoderConfig, dir: &Path) -> Result<Agreement, Strin
     let mut lag = (0isize, f64::INFINITY);
     for &t in &live {
         for l in -1024isize..=1024 {
-            let r = rel_rms(&ours[c0][..ours[c0].len().min(24576)], &theirs[t], l, 1.0, 8192);
+            let r = rel_rms(
+                &ours[c0][..ours[c0].len().min(24576)],
+                &theirs[t],
+                l,
+                1.0,
+                8192,
+            );
             if r < lag.1 {
                 lag = (l, r);
             }
@@ -261,7 +344,10 @@ fn compare(bin: &str, cfg: EncoderConfig, dir: &Path) -> Result<Agreement, Strin
     }
     let lag = lag.0;
     let mut used = Vec::new();
-    let mut agreement = Agreement { gain: 0.0, shape: 0.0 };
+    let mut agreement = Agreement {
+        gain: 0.0,
+        shape: 0.0,
+    };
     let mut line = String::new();
     for (c, s) in speakers.iter().enumerate() {
         let (t, r) = live
@@ -270,7 +356,9 @@ fn compare(bin: &str, cfg: EncoderConfig, dir: &Path) -> Result<Agreement, Strin
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .unwrap();
         if used.contains(&t) {
-            return Err(format!("{label}: two of our channels match dcadec's channel {t}"));
+            return Err(format!(
+                "{label}: two of our channels match dcadec's channel {t}"
+            ));
         }
         used.push(t);
         // The least-squares gain of theirs over ours, and what is left
@@ -337,7 +425,11 @@ fn config(rate: u32, layout: Layout, bit_rate: u32) -> EncoderConfig {
 /// layouts, decoded by this crate alone, are covered by the round trips.
 fn compared_layouts() -> Vec<Layout> {
     let mut v = vec![Layout::Mono];
-    v.extend(all_layouts().into_iter().filter(|l| l.speakers().contains(&Speaker::LFE) && l.channels() >= 3));
+    v.extend(
+        all_layouts()
+            .into_iter()
+            .filter(|l| l.speakers().contains(&Speaker::LFE) && l.channels() >= 3),
+    );
     v
 }
 
@@ -345,7 +437,13 @@ fn check(bin: &str, cfgs: Vec<EncoderConfig>, gain_tolerance: f64, dir: &Path) {
     check_within(bin, cfgs, gain_tolerance, SHAPE_TOLERANCE, dir);
 }
 
-fn check_within(bin: &str, cfgs: Vec<EncoderConfig>, gain_tolerance: f64, shape_tolerance: f64, dir: &Path) {
+fn check_within(
+    bin: &str,
+    cfgs: Vec<EncoderConfig>,
+    gain_tolerance: f64,
+    shape_tolerance: f64,
+    dir: &Path,
+) {
     let (mut gain, mut shape) = (0.0f64, 0.0f64);
     let n = cfgs.len();
     for cfg in cfgs {
@@ -353,9 +451,17 @@ fn check_within(bin: &str, cfgs: Vec<EncoderConfig>, gain_tolerance: f64, shape_
         gain = gain.max(a.gain);
         shape = shape.max(a.shape);
     }
-    eprintln!("{n} streams: worst gain deviation {gain:.2e}, worst relative RMS after gain {shape:.2e}");
-    assert!(shape < shape_tolerance, "relative RMS {shape:.2e} ≥ {shape_tolerance:e}");
-    assert!(gain < gain_tolerance, "gain deviation {gain:.2e} ≥ {gain_tolerance:e}");
+    eprintln!(
+        "{n} streams: worst gain deviation {gain:.2e}, worst relative RMS after gain {shape:.2e}"
+    );
+    assert!(
+        shape < shape_tolerance,
+        "relative RMS {shape:.2e} ≥ {shape_tolerance:e}"
+    );
+    assert!(
+        gain < gain_tolerance,
+        "gain deviation {gain:.2e} ≥ {gain_tolerance:e}"
+    );
 }
 
 #[test]
@@ -363,8 +469,16 @@ fn every_compared_layout_agrees_with_libdca_at_full_rate() {
     let Some(bin) = dcadec() else { return };
     let dir = scratch("full");
     let mut cfgs = Vec::new();
-    for (rate, bit_rate) in [(48_000u32, 1_536_000u32), (44_100, 1_411_200), (32_000, 1_024_000)] {
-        cfgs.extend(compared_layouts().into_iter().map(|l| config(rate, l, bit_rate)));
+    for (rate, bit_rate) in [
+        (48_000u32, 1_536_000u32),
+        (44_100, 1_411_200),
+        (32_000, 1_024_000),
+    ] {
+        cfgs.extend(
+            compared_layouts()
+                .into_iter()
+                .map(|l| config(rate, l, bit_rate)),
+        );
     }
     check(&bin, cfgs, GAIN_TOLERANCE_FULL_RATE, &dir);
 }
@@ -375,7 +489,11 @@ fn every_compared_layout_agrees_with_libdca_at_lower_rates() {
     let dir = scratch("lower");
     let mut cfgs = Vec::new();
     for (rate, bit_rate) in [(48_000u32, 384_000u32), (44_100, 256_000)] {
-        cfgs.extend(compared_layouts().into_iter().map(|l| config(rate, l, bit_rate)));
+        cfgs.extend(
+            compared_layouts()
+                .into_iter()
+                .map(|l| config(rate, l, bit_rate)),
+        );
     }
     for (layout, rate, bit_rate) in [
         (Layout::Surround51Side, 48_000, 768_000),
@@ -416,5 +534,11 @@ fn stereo_agrees_with_libdca() {
     let mut cfg = config(48_000, Layout::Stereo, 512_000);
     cfg.transients = false;
     cfgs.push(cfg);
-    check_within(&bin, cfgs, GAIN_TOLERANCE_FULL_RATE, SHAPE_TOLERANCE_16_BIT, &dir);
+    check_within(
+        &bin,
+        cfgs,
+        GAIN_TOLERANCE_FULL_RATE,
+        SHAPE_TOLERANCE_16_BIT,
+        &dir,
+    );
 }

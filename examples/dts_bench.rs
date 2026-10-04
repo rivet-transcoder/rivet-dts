@@ -53,18 +53,32 @@ fn main() {
     let raw = std::fs::read(args.get(1).expect("pcm file")).unwrap();
     let passes: usize = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(5);
     let only = args.get(3).cloned().unwrap_or_default();
-    let stereo: Vec<f32> = raw.as_chunks::<4>().0.iter().map(|c| f32::from_le_bytes(*c)).collect();
+    let stereo: Vec<f32> = raw
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|c| f32::from_le_bytes(*c))
+        .collect();
     let secs = stereo.len() as f64 / 2.0 / 48_000.0;
     let six: Vec<f32> = stereo
         .as_chunks::<2>()
         .0
         .iter()
         .flat_map(|&[l, r]| {
-            [l, r, 0.5 * (l + r), 0.25 * (l + r), 0.5 * (l - r), 0.5 * (r - l)]
+            [
+                l,
+                r,
+                0.5 * (l + r),
+                0.25 * (l + r),
+                0.5 * (l - r),
+                0.5 * (r - l),
+            ]
         })
         .collect();
-    let cases: [(&str, Layout, u32, &[f32]); 2] =
-        [("2.0 768k", Layout::Stereo, 768_000, &stereo), ("5.1 1536k", Layout::Surround51Side, 1_536_000, &six)];
+    let cases: [(&str, Layout, u32, &[f32]); 2] = [
+        ("2.0 768k", Layout::Stereo, 768_000, &stereo),
+        ("5.1 1536k", Layout::Surround51Side, 1_536_000, &six),
+    ];
     for (name, layout, rate, pcm) in cases {
         if !name.contains(only.as_str()) {
             continue;
@@ -82,10 +96,17 @@ fn main() {
         });
         let mut h = 0xcbf2_9ce4_8422_2325u64;
         packets.iter().for_each(|p| fnv(&mut h, p.iter().copied()));
-        println!("encode  {name:<10} {:7.1} x realtime (stream hash {h:016x})", secs / t);
+        println!(
+            "encode  {name:<10} {:7.1} x realtime (stream hash {h:016x})",
+            secs / t
+        );
         let (mut pcm, mut dsecs) = (Vec::new(), 0.0);
         let t = best(passes, || dsecs = decode_all(&packets, &mut pcm));
-        println!("decode  {name:<10} {:7.1} x realtime (output hash {:016x})", dsecs / t, pcm_hash(&pcm));
+        println!(
+            "decode  {name:<10} {:7.1} x realtime (output hash {:016x})",
+            dsecs / t,
+            pcm_hash(&pcm)
+        );
     }
     for path in args.iter().skip(4) {
         let raw = std::fs::read(path).unwrap();
@@ -104,7 +125,14 @@ fn main() {
         }
         let (mut pcm, mut dsecs) = (Vec::new(), 0.0);
         let t = best(passes, || dsecs = decode_all(&packets, &mut pcm));
-        let name = std::path::Path::new(path).file_name().unwrap().to_string_lossy();
-        println!("decode  {name:<30} {:7.1} x realtime (output hash {:016x})", dsecs / t, pcm_hash(&pcm));
+        let name = std::path::Path::new(path)
+            .file_name()
+            .unwrap()
+            .to_string_lossy();
+        println!(
+            "decode  {name:<30} {:7.1} x realtime (output hash {:016x})",
+            dsecs / t,
+            pcm_hash(&pcm)
+        );
     }
 }

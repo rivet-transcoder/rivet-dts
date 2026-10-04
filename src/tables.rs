@@ -20,6 +20,7 @@
 
 /// D.1.1 "6-bit Quantization (Nominal 2,2 dB Step)", page 215: index → scale
 /// factor (RMS) for `SHUFF` ≠ 6. Index 63 is "invalid" in the spec and is 0 here.
+#[rustfmt::skip]
 pub const SCALE_RMS_6BIT: [u32; 64] = [
     1, 2, 2, 3, 3, 4, 6, 7,
     10, 12, 16, 20, 26, 34, 44, 56,
@@ -34,6 +35,7 @@ pub const SCALE_RMS_6BIT: [u32; 64] = [
 /// D.1.2 "7-bit Quantization (Nominal 1,1 dB Step)", pages 215–216: index → scale
 /// factor for `SHUFF` == 6 and for the LFE scale index. Indices 125..=127 are "invalid"
 /// in the spec and are 0 here.
+#[rustfmt::skip]
 pub const SCALE_RMS_7BIT: [u32; 128] = [
     1, 1, 2, 2, 2, 2, 3, 3,
     3, 4, 4, 5, 6, 7, 7, 8,
@@ -55,6 +57,7 @@ pub const SCALE_RMS_7BIT: [u32; 128] = [
 
 /// D.2.1 "Lossy Quantization", page 217: `ABITS` → quantiser step size × 2^22
 /// (the "Step-size×2^22" column). Used unless `RATE` == 0x1F.
+#[rustfmt::skip]
 pub const STEP_SIZE_LOSSY_Q22: [u32; 27] = [
     0, 6710886, 4194304, 3355443, 2474639, 2097152,
     1761608, 1426063, 796918, 461373, 251658, 146801,
@@ -65,6 +68,7 @@ pub const STEP_SIZE_LOSSY_Q22: [u32; 27] = [
 
 /// D.2.2 "Lossless Quantization", page 218: `ABITS` → step size × 2^22 when
 /// `RATE` == 0x1F.
+#[rustfmt::skip]
 pub const STEP_SIZE_LOSSLESS_Q22: [u32; 27] = [
     0, 4194304, 2097152, 1384120, 1048576, 696254,
     524288, 348127, 262144, 131072, 65431, 33026,
@@ -75,6 +79,7 @@ pub const STEP_SIZE_LOSSLESS_Q22: [u32; 27] = [
 
 /// D.3 "Scale Factor for Joint Intensity Coding", page 219: the decoded
 /// `JOIN_SCALES` index (+64 bias, Table 5-28) → linear scale factor.
+#[rustfmt::skip]
 pub const JOINT_INTENSITY_SCALE: [f32; 129] = [
     0.025088, 0.026624, 0.02816, 0.029824, 0.031616, 0.033472,
     0.035456, 0.037568, 0.039808, 0.042176, 0.044672, 0.047296,
@@ -102,6 +107,7 @@ pub const JOINT_INTENSITY_SCALE: [f32; 129] = [
 
 /// D.4 "Dynamic Range Control", pages 219–221: the 8-bit `RANGE` index →
 /// linear multiplier (the "Multiplier" column; −31.75 dB … +32 dB in 0.25 dB steps).
+#[rustfmt::skip]
 pub const DRC_MULTIPLIER: [f32; 256] = [
     0.0259, 0.0266, 0.0274, 0.0282, 0.029, 0.0299, 0.0307, 0.0316,
     0.0325, 0.0335, 0.0345, 0.0355, 0.0365, 0.0376, 0.0387, 0.0398,
@@ -142,88 +148,103 @@ pub const DRC_MULTIPLIER: [f32; 256] = [
 pub type HuffEntry = (i32, u8, u32);
 
 /// D.5 Huffman code book `A3` (3 levels), used for subband sample indices / SEL (Table 5-26).
-pub const HUFF_A3: [HuffEntry; 3] = [
-    (0, 1, 0), (1, 2, 2), (-1, 2, 3),
-];
+pub const HUFF_A3: [HuffEntry; 3] = [(0, 1, 0), (1, 2, 2), (-1, 2, 3)];
 
 /// D.5 Huffman code book `A4` (4 levels), used for TMODE (Table 5-23).
-pub const HUFF_A4: [HuffEntry; 4] = [
-    (0, 1, 0), (1, 2, 2), (2, 3, 6), (3, 3, 7),
-];
+pub const HUFF_A4: [HuffEntry; 4] = [(0, 1, 0), (1, 2, 2), (2, 3, 6), (3, 3, 7)];
 
 /// D.5 Huffman code book `B4` (4 levels), used for TMODE (Table 5-23).
-pub const HUFF_B4: [HuffEntry; 4] = [
-    (0, 2, 2), (1, 3, 6), (2, 3, 7), (3, 1, 0),
-];
+pub const HUFF_B4: [HuffEntry; 4] = [(0, 2, 2), (1, 3, 6), (2, 3, 7), (3, 1, 0)];
 
 /// D.5 Huffman code book `C4` (4 levels), used for TMODE (Table 5-23).
-pub const HUFF_C4: [HuffEntry; 4] = [
-    (0, 3, 6), (1, 3, 7), (2, 1, 0), (3, 2, 2),
-];
+pub const HUFF_C4: [HuffEntry; 4] = [(0, 3, 6), (1, 3, 7), (2, 1, 0), (3, 2, 2)];
 
 /// D.5 Huffman code book `D4` (4 levels), used for TMODE (Table 5-23).
-pub const HUFF_D4: [HuffEntry; 4] = [
-    (0, 2, 0), (1, 2, 1), (2, 2, 2), (3, 2, 3),
-];
+pub const HUFF_D4: [HuffEntry; 4] = [(0, 2, 0), (1, 2, 1), (2, 2, 2), (3, 2, 3)];
 
 /// D.5 Huffman code book `A5` (5 levels), used for subband sample indices / SEL (Table 5-26).
-pub const HUFF_A5: [HuffEntry; 5] = [
-    (0, 1, 0), (1, 2, 2), (-1, 3, 6), (2, 4, 14),
-    (-2, 4, 15),
-];
+pub const HUFF_A5: [HuffEntry; 5] = [(0, 1, 0), (1, 2, 2), (-1, 3, 6), (2, 4, 14), (-2, 4, 15)];
 
 /// D.5 Huffman code book `B5` (5 levels), used for subband sample indices / SEL (Table 5-26).
-pub const HUFF_B5: [HuffEntry; 5] = [
-    (0, 2, 2), (1, 2, 0), (-1, 2, 1), (2, 3, 6),
-    (-2, 3, 7),
-];
+pub const HUFF_B5: [HuffEntry; 5] = [(0, 2, 2), (1, 2, 0), (-1, 2, 1), (2, 3, 6), (-2, 3, 7)];
 
 /// D.5 Huffman code book `C5` (5 levels), used for subband sample indices / SEL (Table 5-26).
-pub const HUFF_C5: [HuffEntry; 5] = [
-    (0, 1, 0), (1, 3, 4), (-1, 3, 5), (2, 3, 6),
-    (-2, 3, 7),
-];
+pub const HUFF_C5: [HuffEntry; 5] = [(0, 1, 0), (1, 3, 4), (-1, 3, 5), (2, 3, 6), (-2, 3, 7)];
 
 /// D.5 Huffman code book `A7` (7 levels), used for subband sample indices / SEL (Table 5-26).
 pub const HUFF_A7: [HuffEntry; 7] = [
-    (0, 1, 0), (1, 3, 6), (-1, 3, 5), (2, 3, 4),
-    (-2, 4, 14), (3, 5, 31), (-3, 5, 30),
+    (0, 1, 0),
+    (1, 3, 6),
+    (-1, 3, 5),
+    (2, 3, 4),
+    (-2, 4, 14),
+    (3, 5, 31),
+    (-3, 5, 30),
 ];
 
 /// D.5 Huffman code book `B7` (7 levels), used for subband sample indices / SEL (Table 5-26).
 pub const HUFF_B7: [HuffEntry; 7] = [
-    (0, 2, 3), (1, 2, 1), (-1, 2, 0), (2, 3, 4),
-    (-2, 4, 11), (3, 5, 21), (-3, 5, 20),
+    (0, 2, 3),
+    (1, 2, 1),
+    (-1, 2, 0),
+    (2, 3, 4),
+    (-2, 4, 11),
+    (3, 5, 21),
+    (-3, 5, 20),
 ];
 
 /// D.5 Huffman code book `C7` (7 levels), used for subband sample indices / SEL (Table 5-26).
 pub const HUFF_C7: [HuffEntry; 7] = [
-    (0, 2, 3), (1, 2, 2), (-1, 2, 1), (2, 4, 3),
-    (-2, 4, 2), (3, 4, 1), (-3, 4, 0),
+    (0, 2, 3),
+    (1, 2, 2),
+    (-1, 2, 1),
+    (2, 4, 3),
+    (-2, 4, 2),
+    (3, 4, 1),
+    (-3, 4, 0),
 ];
 
 /// D.5 Huffman code book `A9` (9 levels), used for subband sample indices / SEL (Table 5-26).
 pub const HUFF_A9: [HuffEntry; 9] = [
-    (0, 1, 0), (1, 3, 7), (-1, 3, 5), (2, 4, 13),
-    (-2, 4, 9), (3, 4, 8), (-3, 5, 25), (4, 6, 49),
+    (0, 1, 0),
+    (1, 3, 7),
+    (-1, 3, 5),
+    (2, 4, 13),
+    (-2, 4, 9),
+    (3, 4, 8),
+    (-3, 5, 25),
+    (4, 6, 49),
     (-4, 6, 48),
 ];
 
 /// D.5 Huffman code book `B9` (9 levels), used for subband sample indices / SEL (Table 5-26).
 pub const HUFF_B9: [HuffEntry; 9] = [
-    (0, 2, 2), (1, 2, 0), (-1, 3, 7), (2, 3, 3),
-    (-2, 3, 2), (3, 5, 27), (-3, 5, 26), (4, 5, 25),
+    (0, 2, 2),
+    (1, 2, 0),
+    (-1, 3, 7),
+    (2, 3, 3),
+    (-2, 3, 2),
+    (3, 5, 27),
+    (-3, 5, 26),
+    (4, 5, 25),
     (-4, 5, 24),
 ];
 
 /// D.5 Huffman code book `C9` (9 levels), used for subband sample indices / SEL (Table 5-26).
 pub const HUFF_C9: [HuffEntry; 9] = [
-    (0, 2, 2), (1, 2, 0), (-1, 3, 7), (2, 3, 6),
-    (-2, 3, 2), (3, 4, 6), (-3, 5, 15), (4, 6, 29),
+    (0, 2, 2),
+    (1, 2, 0),
+    (-1, 3, 7),
+    (2, 3, 6),
+    (-2, 3, 2),
+    (3, 4, 6),
+    (-3, 5, 15),
+    (4, 6, 29),
     (-4, 6, 28),
 ];
 
 /// D.5 Huffman code book `A12` (12 levels), used for ABITS / BHUFF (Table 5-25).
+#[rustfmt::skip]
 pub const HUFF_A12: [HuffEntry; 12] = [
     (1, 1, 0), (2, 2, 2), (3, 3, 6), (4, 4, 14),
     (5, 5, 30), (6, 6, 62), (7, 8, 255), (8, 8, 254),
@@ -231,6 +252,7 @@ pub const HUFF_A12: [HuffEntry; 12] = [
 ];
 
 /// D.5 Huffman code book `B12` (12 levels), used for ABITS / BHUFF (Table 5-25).
+#[rustfmt::skip]
 pub const HUFF_B12: [HuffEntry; 12] = [
     (1, 1, 1), (2, 2, 0), (3, 3, 2), (4, 5, 15),
     (5, 5, 12), (6, 6, 29), (7, 7, 57), (8, 7, 56),
@@ -238,6 +260,7 @@ pub const HUFF_B12: [HuffEntry; 12] = [
 ];
 
 /// D.5 Huffman code book `C12` (12 levels), used for ABITS / BHUFF (Table 5-25).
+#[rustfmt::skip]
 pub const HUFF_C12: [HuffEntry; 12] = [
     (1, 2, 0), (2, 3, 7), (3, 3, 5), (4, 3, 4),
     (5, 3, 2), (6, 4, 13), (7, 4, 12), (8, 4, 6),
@@ -245,6 +268,7 @@ pub const HUFF_C12: [HuffEntry; 12] = [
 ];
 
 /// D.5 Huffman code book `D12` (12 levels), used for ABITS / BHUFF (Table 5-25).
+#[rustfmt::skip]
 pub const HUFF_D12: [HuffEntry; 12] = [
     (1, 2, 3), (2, 2, 2), (3, 2, 0), (4, 3, 2),
     (5, 4, 6), (6, 5, 14), (7, 6, 30), (8, 7, 62),
@@ -252,6 +276,7 @@ pub const HUFF_D12: [HuffEntry; 12] = [
 ];
 
 /// D.5 Huffman code book `E12` (12 levels), used for ABITS / BHUFF (Table 5-25).
+#[rustfmt::skip]
 pub const HUFF_E12: [HuffEntry; 12] = [
     (1, 1, 1), (2, 2, 0), (3, 3, 2), (4, 4, 6),
     (5, 5, 14), (6, 7, 63), (7, 7, 61), (8, 8, 124),
@@ -259,6 +284,7 @@ pub const HUFF_E12: [HuffEntry; 12] = [
 ];
 
 /// D.5 Huffman code book `A13` (13 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_A13: [HuffEntry; 13] = [
     (0, 1, 0), (1, 3, 4), (-1, 4, 15), (2, 4, 13),
     (-2, 4, 12), (3, 4, 10), (-3, 5, 29), (4, 5, 22),
@@ -267,6 +293,7 @@ pub const HUFF_A13: [HuffEntry; 13] = [
 ];
 
 /// D.5 Huffman code book `B13` (13 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_B13: [HuffEntry; 13] = [
     (0, 2, 0), (1, 3, 6), (-1, 3, 5), (2, 3, 2),
     (-2, 4, 15), (3, 4, 9), (-3, 4, 7), (4, 4, 6),
@@ -275,6 +302,7 @@ pub const HUFF_B13: [HuffEntry; 13] = [
 ];
 
 /// D.5 Huffman code book `C13` (13 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_C13: [HuffEntry; 13] = [
     (0, 3, 5), (1, 3, 4), (-1, 3, 3), (2, 3, 2),
     (-2, 3, 0), (3, 4, 15), (-3, 4, 14), (4, 4, 12),
@@ -283,6 +311,7 @@ pub const HUFF_C13: [HuffEntry; 13] = [
 ];
 
 /// D.5 Huffman code book `A17` (17 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_A17: [HuffEntry; 17] = [
     (0, 2, 1), (1, 3, 7), (-1, 3, 6), (2, 3, 4),
     (-2, 3, 1), (3, 4, 11), (-3, 4, 10), (4, 4, 0),
@@ -292,6 +321,7 @@ pub const HUFF_A17: [HuffEntry; 17] = [
 ];
 
 /// D.5 Huffman code book `B17` (17 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_B17: [HuffEntry; 17] = [
     (0, 2, 0), (1, 3, 6), (-1, 3, 5), (2, 3, 2),
     (-2, 4, 15), (3, 4, 9), (-3, 4, 8), (4, 5, 29),
@@ -301,6 +331,7 @@ pub const HUFF_B17: [HuffEntry; 17] = [
 ];
 
 /// D.5 Huffman code book `C17` (17 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_C17: [HuffEntry; 17] = [
     (0, 3, 6), (1, 3, 4), (-1, 3, 3), (2, 3, 0),
     (-2, 4, 15), (3, 4, 11), (-3, 4, 10), (4, 4, 4),
@@ -310,6 +341,7 @@ pub const HUFF_C17: [HuffEntry; 17] = [
 ];
 
 /// D.5 Huffman code book `D17` (17 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_D17: [HuffEntry; 17] = [
     (0, 1, 0), (1, 3, 7), (-1, 3, 6), (2, 4, 11),
     (-2, 4, 10), (3, 5, 19), (-3, 5, 18), (4, 6, 35),
@@ -319,6 +351,7 @@ pub const HUFF_D17: [HuffEntry; 17] = [
 ];
 
 /// D.5 Huffman code book `E17` (17 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_E17: [HuffEntry; 17] = [
     (0, 1, 0), (1, 3, 5), (-1, 3, 4), (2, 4, 12),
     (-2, 5, 31), (3, 5, 28), (-3, 5, 27), (4, 6, 60),
@@ -328,6 +361,7 @@ pub const HUFF_E17: [HuffEntry; 17] = [
 ];
 
 /// D.5 Huffman code book `F17` (17 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_F17: [HuffEntry; 17] = [
     (0, 3, 6), (1, 3, 5), (-1, 3, 4), (2, 3, 2),
     (-2, 3, 1), (3, 4, 15), (-3, 4, 14), (4, 4, 6),
@@ -337,6 +371,7 @@ pub const HUFF_F17: [HuffEntry; 17] = [
 ];
 
 /// D.5 Huffman code book `G17` (17 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_G17: [HuffEntry; 17] = [
     (0, 2, 2), (1, 3, 7), (-1, 3, 6), (2, 3, 1),
     (-2, 3, 0), (3, 4, 5), (-3, 4, 4), (4, 5, 14),
@@ -346,6 +381,7 @@ pub const HUFF_G17: [HuffEntry; 17] = [
 ];
 
 /// D.5 Huffman code book `A25` (25 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_A25: [HuffEntry; 25] = [
     (0, 3, 6), (1, 3, 4), (-1, 3, 3), (2, 3, 1),
     (-2, 3, 0), (3, 4, 15), (-3, 4, 14), (4, 4, 5),
@@ -357,6 +393,7 @@ pub const HUFF_A25: [HuffEntry; 25] = [
 ];
 
 /// D.5 Huffman code book `B25` (25 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_B25: [HuffEntry; 25] = [
     (0, 3, 5), (1, 3, 2), (-1, 3, 1), (2, 4, 15),
     (-2, 4, 14), (3, 4, 9), (-3, 4, 8), (4, 4, 6),
@@ -368,6 +405,7 @@ pub const HUFF_B25: [HuffEntry; 25] = [
 ];
 
 /// D.5 Huffman code book `C25` (25 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_C25: [HuffEntry; 25] = [
     (0, 3, 1), (1, 4, 15), (-1, 4, 14), (2, 4, 12),
     (-2, 4, 11), (3, 4, 9), (-3, 4, 8), (4, 4, 6),
@@ -379,6 +417,7 @@ pub const HUFF_C25: [HuffEntry; 25] = [
 ];
 
 /// D.5 Huffman code book `D25` (25 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_D25: [HuffEntry; 25] = [
     (0, 2, 2), (1, 3, 7), (-1, 3, 6), (2, 3, 1),
     (-2, 3, 0), (3, 4, 5), (-3, 4, 4), (4, 5, 13),
@@ -390,6 +429,7 @@ pub const HUFF_D25: [HuffEntry; 25] = [
 ];
 
 /// D.5 Huffman code book `E25` (25 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_E25: [HuffEntry; 25] = [
     (0, 2, 3), (1, 3, 3), (-1, 3, 2), (2, 4, 11),
     (-2, 4, 10), (3, 4, 1), (-3, 4, 0), (4, 5, 17),
@@ -401,6 +441,7 @@ pub const HUFF_E25: [HuffEntry; 25] = [
 ];
 
 /// D.5 Huffman code book `F25` (25 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_F25: [HuffEntry; 25] = [
     (0, 3, 1), (1, 3, 0), (-1, 4, 15), (2, 4, 14),
     (-2, 4, 13), (3, 4, 11), (-3, 4, 10), (4, 4, 8),
@@ -412,6 +453,7 @@ pub const HUFF_F25: [HuffEntry; 25] = [
 ];
 
 /// D.5 Huffman code book `G25` (25 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_G25: [HuffEntry; 25] = [
     (0, 2, 1), (1, 3, 6), (-1, 3, 5), (2, 3, 0),
     (-2, 4, 15), (3, 4, 8), (-3, 4, 3), (4, 5, 28),
@@ -423,6 +465,7 @@ pub const HUFF_G25: [HuffEntry; 25] = [
 ];
 
 /// D.5 Huffman code book `A33` (33 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_A33: [HuffEntry; 33] = [
     (0, 3, 2), (1, 3, 1), (-1, 3, 0), (2, 4, 14),
     (-2, 4, 13), (3, 4, 12), (-3, 4, 11), (4, 4, 9),
@@ -436,6 +479,7 @@ pub const HUFF_A33: [HuffEntry; 33] = [
 ];
 
 /// D.5 Huffman code book `B33` (33 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_B33: [HuffEntry; 33] = [
     (0, 3, 1), (1, 4, 15), (-1, 4, 14), (2, 4, 11),
     (-2, 4, 10), (3, 4, 8), (-3, 4, 7), (4, 4, 4),
@@ -449,6 +493,7 @@ pub const HUFF_B33: [HuffEntry; 33] = [
 ];
 
 /// D.5 Huffman code book `C33` (33 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_C33: [HuffEntry; 33] = [
     (0, 4, 13), (1, 4, 11), (-1, 4, 10), (2, 4, 8),
     (-2, 4, 7), (3, 4, 4), (-3, 4, 3), (4, 4, 2),
@@ -462,6 +507,7 @@ pub const HUFF_C33: [HuffEntry; 33] = [
 ];
 
 /// D.5 Huffman code book `D33` (33 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_D33: [HuffEntry; 33] = [
     (0, 2, 1), (1, 3, 6), (-1, 3, 5), (2, 3, 0),
     (-2, 4, 15), (3, 4, 8), (-3, 4, 3), (4, 5, 28),
@@ -475,6 +521,7 @@ pub const HUFF_D33: [HuffEntry; 33] = [
 ];
 
 /// D.5 Huffman code book `E33` (33 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_E33: [HuffEntry; 33] = [
     (0, 2, 2), (1, 3, 2), (-1, 3, 1), (2, 4, 12),
     (-2, 4, 7), (3, 4, 0), (-3, 5, 31), (4, 5, 27),
@@ -488,6 +535,7 @@ pub const HUFF_E33: [HuffEntry; 33] = [
 ];
 
 /// D.5 Huffman code book `F33` (33 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_F33: [HuffEntry; 33] = [
     (0, 4, 13), (1, 4, 12), (-1, 4, 11), (2, 4, 9),
     (-2, 4, 8), (3, 4, 7), (-3, 4, 6), (4, 4, 4),
@@ -501,6 +549,7 @@ pub const HUFF_F33: [HuffEntry; 33] = [
 ];
 
 /// D.5 Huffman code book `G33` (33 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_G33: [HuffEntry; 33] = [
     (0, 3, 6), (1, 3, 3), (-1, 3, 2), (2, 4, 15),
     (-2, 4, 14), (3, 4, 9), (-3, 4, 8), (4, 4, 1),
@@ -514,6 +563,7 @@ pub const HUFF_G33: [HuffEntry; 33] = [
 ];
 
 /// D.5 Huffman code book `A65` (65 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_A65: [HuffEntry; 65] = [
     (0, 4, 6), (1, 4, 5), (-1, 4, 4), (2, 4, 2),
     (-2, 4, 1), (3, 4, 0), (-3, 5, 31), (4, 5, 29),
@@ -535,6 +585,7 @@ pub const HUFF_A65: [HuffEntry; 65] = [
 ];
 
 /// D.5 Huffman code book `B65` (65 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_B65: [HuffEntry; 65] = [
     (0, 4, 4), (1, 4, 2), (-1, 4, 1), (2, 5, 30),
     (-2, 5, 29), (3, 5, 26), (-3, 5, 25), (4, 5, 23),
@@ -556,6 +607,7 @@ pub const HUFF_B65: [HuffEntry; 65] = [
 ];
 
 /// D.5 Huffman code book `C65` (65 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_C65: [HuffEntry; 65] = [
     (0, 5, 28), (1, 5, 25), (-1, 5, 24), (2, 5, 23),
     (-2, 5, 22), (3, 5, 19), (-3, 5, 18), (4, 5, 16),
@@ -577,6 +629,7 @@ pub const HUFF_C65: [HuffEntry; 65] = [
 ];
 
 /// D.5 Huffman code book `D65` (65 levels), used for subband sample indices / SEL (Table 5-26). Rows ±31/±32 from V1.2.1 (missing in V1.6.1).
+#[rustfmt::skip]
 pub const HUFF_D65: [HuffEntry; 65] = [
     (0, 3, 4), (1, 3, 1), (-1, 3, 0), (2, 4, 13),
     (-2, 4, 12), (3, 4, 7), (-3, 4, 6), (4, 5, 31),
@@ -598,6 +651,7 @@ pub const HUFF_D65: [HuffEntry; 65] = [
 ];
 
 /// D.5 Huffman code book `E65` (65 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_E65: [HuffEntry; 65] = [
     (0, 3, 4), (1, 3, 0), (-1, 4, 15), (2, 4, 7),
     (-2, 4, 6), (3, 5, 29), (-3, 5, 28), (4, 5, 23),
@@ -619,6 +673,7 @@ pub const HUFF_E65: [HuffEntry; 65] = [
 ];
 
 /// D.5 Huffman code book `F65` (65 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_F65: [HuffEntry; 65] = [
     (0, 3, 6), (1, 3, 3), (-1, 3, 2), (2, 4, 15),
     (-2, 4, 14), (3, 4, 9), (-3, 4, 8), (4, 4, 1),
@@ -640,6 +695,7 @@ pub const HUFF_F65: [HuffEntry; 65] = [
 ];
 
 /// D.5 Huffman code book `G65` (65 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_G65: [HuffEntry; 65] = [
     (0, 4, 14), (1, 4, 11), (-1, 4, 10), (2, 4, 8),
     (-2, 4, 6), (3, 4, 4), (-3, 4, 3), (4, 4, 0),
@@ -661,6 +717,7 @@ pub const HUFF_G65: [HuffEntry; 65] = [
 ];
 
 /// D.5 Huffman code book `SA129` (129 levels), used for scale-factor differences / SHUFF (Table 5-24).
+#[rustfmt::skip]
 pub const HUFF_SA129: [HuffEntry; 129] = [
     (0, 2, 1), (23, 13, 1347), (-45, 14, 15062), (1, 3, 6),
     (-23, 13, 1346), (46, 14, 15061), (-1, 3, 5), (24, 13, 1345),
@@ -698,6 +755,7 @@ pub const HUFF_SA129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `SB129` (129 levels), used for scale-factor differences / SHUFF (Table 5-24).
+#[rustfmt::skip]
 pub const HUFF_SB129: [HuffEntry; 129] = [
     (0, 3, 3), (23, 15, 4019), (-45, 15, 3974), (1, 3, 2),
     (-23, 15, 4018), (46, 15, 3973), (-1, 3, 1), (24, 15, 4017),
@@ -735,6 +793,7 @@ pub const HUFF_SB129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `SC129` (129 levels), used for scale-factor differences / SHUFF (Table 5-24).
+#[rustfmt::skip]
 pub const HUFF_SC129: [HuffEntry; 129] = [
     (0, 3, 4), (23, 11, 540), (-45, 15, 20982), (1, 3, 1),
     (-23, 11, 539), (46, 15, 20981), (-1, 3, 0), (24, 12, 3612),
@@ -772,6 +831,7 @@ pub const HUFF_SC129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `SD129` (129 levels), used for scale-factor differences / SHUFF (Table 5-24).
+#[rustfmt::skip]
 pub const HUFF_SD129: [HuffEntry; 129] = [
     (0, 2, 0), (23, 15, 28599), (-45, 15, 28554), (1, 3, 5),
     (-23, 15, 28598), (46, 15, 28553), (-1, 3, 4), (24, 15, 28597),
@@ -809,6 +869,7 @@ pub const HUFF_SD129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `SE129` (129 levels), used for scale-factor differences / SHUFF (Table 5-24).
+#[rustfmt::skip]
 pub const HUFF_SE129: [HuffEntry; 129] = [
     (0, 4, 14), (23, 9, 189), (-45, 15, 28662), (1, 4, 11),
     (-23, 9, 188), (46, 15, 28585), (-1, 4, 10), (24, 9, 61),
@@ -846,6 +907,7 @@ pub const HUFF_SE129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `A129` (129 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_A129: [HuffEntry; 129] = [
     (0, 4, 8), (23, 8, 231), (-45, 9, 36), (1, 4, 10),
     (-23, 8, 230), (46, 10, 950), (-1, 4, 9), (24, 8, 223),
@@ -883,6 +945,7 @@ pub const HUFF_A129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `B129` (129 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_B129: [HuffEntry; 129] = [
     (0, 5, 10), (23, 7, 89), (-45, 9, 390), (1, 5, 7),
     (-23, 7, 88), (46, 9, 388), (-1, 5, 6), (24, 7, 81),
@@ -920,6 +983,7 @@ pub const HUFF_B129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `C129` (129 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_C129: [HuffEntry; 129] = [
     (0, 6, 58), (23, 7, 113), (-45, 8, 100), (1, 6, 55),
     (-23, 7, 112), (46, 8, 66), (-1, 6, 54), (24, 7, 106),
@@ -957,6 +1021,7 @@ pub const HUFF_C129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `D129` (129 levels), used for subband sample indices / SEL (Table 5-26). Level −37 from V1.2.1 (V1.6.1 prints 37 twice).
+#[rustfmt::skip]
 pub const HUFF_D129: [HuffEntry; 129] = [
     (0, 4, 9), (1, 4, 6), (-1, 4, 5), (2, 4, 2),
     (-2, 4, 1), (3, 5, 30), (-3, 5, 29), (4, 5, 26),
@@ -994,6 +1059,7 @@ pub const HUFF_D129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `E129` (129 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_E129: [HuffEntry; 129] = [
     (0, 5, 12), (23, 7, 87), (-45, 11, 1059), (1, 5, 11),
     (-23, 7, 86), (46, 11, 877), (-1, 5, 10), (24, 7, 79),
@@ -1031,6 +1097,7 @@ pub const HUFF_E129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `F129` (129 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_F129: [HuffEntry; 129] = [
     (0, 6, 56), (23, 7, 125), (-45, 9, 473), (1, 6, 55),
     (-23, 7, 124), (46, 9, 343), (-1, 6, 54), (24, 7, 123),
@@ -1068,6 +1135,7 @@ pub const HUFF_F129: [HuffEntry; 129] = [
 ];
 
 /// D.5 Huffman code book `G129` (129 levels), used for subband sample indices / SEL (Table 5-26).
+#[rustfmt::skip]
 pub const HUFF_G129: [HuffEntry; 129] = [
     (0, 4, 0), (23, 7, 11), (-45, 10, 328), (1, 5, 29),
     (-23, 7, 10), (46, 10, 201), (-1, 5, 28), (24, 7, 8),
@@ -1109,10 +1177,19 @@ pub const HUFF_G129: [HuffEntry; 129] = [
 /// element (Annex C.3.2 decodes them by modulus/division, no table needed).
 /// What the decoder needs is the width of the transmitted code, from the
 /// table captions ("3-level 4-element 7-bit Block Code Book", …): `(levels, bits)`.
-pub const BLOCK_CODE_BITS: [(u32, u8); 7] = [(3, 7), (5, 10), (7, 12), (9, 13), (13, 15), (17, 17), (25, 19)];
+pub const BLOCK_CODE_BITS: [(u32, u8); 7] = [
+    (3, 7),
+    (5, 10),
+    (7, 12),
+    (9, 13),
+    (13, 15),
+    (17, 17),
+    (25, 19),
+];
 
 /// D.8 "32-Band Interpolation and LFE Interpolation FIR", pages 260–268:
 /// 32-Band Interpolation FIR, Perfect Reconstruction (`FILTS` == 1), 512 taps.
+#[rustfmt::skip]
 pub const QMF_FIR_PERFECT: [f32; 512] = [
     1.1400332e-10, 7.1387421e-11, -8.3586796e-9, -2.5292966e-8,
     -9.1301988e-8, -2.77156e-7, -5.7461476e-7, -3.7129862e-7,
@@ -1246,6 +1323,7 @@ pub const QMF_FIR_PERFECT: [f32; 512] = [
 
 /// D.8 "32-Band Interpolation and LFE Interpolation FIR", pages 260–268:
 /// 32-Band Interpolation FIR, Non-Perfect Reconstruction (`FILTS` == 0), 512 taps.
+#[rustfmt::skip]
 pub const QMF_FIR_NON_PERFECT: [f32; 512] = [
     -1.390191784e-7, -1.693738625e-7, -2.030677564e-7, -2.404238444e-7,
     -2.818143514e-7, -3.276689142e-7, -3.784752209e-7, -4.347855338e-7,
@@ -1379,6 +1457,7 @@ pub const QMF_FIR_NON_PERFECT: [f32; 512] = [
 
 /// D.8 "32-Band Interpolation and LFE Interpolation FIR", pages 260–268:
 /// LFE Interpolation FIR, 64× interpolation (`LFF` == 2), 512 taps.
+#[rustfmt::skip]
 pub const LFE_FIR_64X: [f32; 512] = [
     0.0002658434387, 8.17936525e-5, 9.439323912e-5, 0.0001082170274,
     0.000123337144, 0.0001397485757, 0.0001575958013, 0.0001769922383,
@@ -1512,6 +1591,7 @@ pub const LFE_FIR_64X: [f32; 512] = [
 
 /// D.8 "32-Band Interpolation and LFE Interpolation FIR", pages 260–268:
 /// LFE Interpolation FIR, 128× interpolation (`LFF` == 1), 512 taps.
+#[rustfmt::skip]
 pub const LFE_FIR_128X: [f32; 512] = [
     0.00053168571, 0.00016358691, 0.00018878609, 0.00021643363,
     0.00024667382, 0.0002794966, 0.00031519096, 0.00035398375,
@@ -1646,6 +1726,7 @@ pub const LFE_FIR_128X: [f32; 512] = [
 /// D.9 "1 024 tap FIR for X96 Synthesis QMF", pages 268–274: the 64-band
 /// prototype with the signs of every second block of 128 taps changed, as printed
 /// (6.2.4.7). Row 160 is printed twice with the same value in every edition.
+#[rustfmt::skip]
 pub const X96_QMF_FIR: [f64; 1024] = [
     -7.127938986604168e-8, -7.0950903150875e-8, -7.95250343213751e-8, -8.932687128137479e-8,
     -9.748319049487465e-8, -1.058665951072195e-7, -1.152736341186576e-7, -1.252310964561535e-7,
@@ -1908,6 +1989,7 @@ pub const X96_QMF_FIR: [f64; 1024] = [
 /// D.11 "Look-up Table for Downmix Scale Factors", pages 275–279: the
 /// `DmixTable` column, |coefficient| × 2^15 for `DmixTblIndex` 0..=240
 /// (−60 dB … 0 dB; Annex C.4–C.6, C.9).
+#[rustfmt::skip]
 pub const DMIX_TABLE: [u16; 241] = [
     33, 35, 37, 39, 41, 44, 46, 49, 52, 55, 58, 62,
     65, 69, 73, 78, 82, 87, 92, 98, 104, 110, 116, 123,
@@ -1934,6 +2016,7 @@ pub const DMIX_TABLE: [u16; 241] = [
 
 /// D.11, the `InvDmixTbl` column: 2^16 / |scale| for `InvDmixTblIndex` 40..=240
 /// (stored at index − 40; −40 dB … 0 dB).
+#[rustfmt::skip]
 pub const INV_DMIX_TABLE: [u32; 201] = [
     6553600, 6186997, 5840902, 5514167, 5205710, 4914507, 4639593, 4380059, 4135042, 3903731,
     3685360, 3479204, 3284581, 3100844, 2927386, 2763630, 2609035, 2463088, 2325305, 2195230,
@@ -1957,4 +2040,3 @@ pub const INV_DMIX_TABLE: [u32; 201] = [
     75680, 74598, 73533, 72482, 71446, 70425, 69419, 68427, 67450, 66486,
     65536,
 ];
-

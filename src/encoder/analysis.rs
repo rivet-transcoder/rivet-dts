@@ -52,22 +52,34 @@ struct RefSynth {
 
 impl RefSynth {
     fn new() -> Self {
-        Self { x: [0.0; 512], z: [0.0; 64] }
+        Self {
+            x: [0.0; 512],
+            z: [0.0; 64],
+        }
     }
 
     fn run(&mut self, xin: &[f64; BANDS], perfect: bool, out: &mut [f64; 32]) {
         use std::f64::consts::PI;
-        let coeff: &[f32; 512] = if perfect { &tables::QMF_FIR_PERFECT } else { &tables::QMF_FIR_NON_PERFECT };
+        let coeff: &[f32; 512] = if perfect {
+            &tables::QMF_FIR_PERFECT
+        } else {
+            &tables::QMF_FIR_NON_PERFECT
+        };
         let mut a = [0.0f64; 16];
         let mut b = [0.0f64; 16];
         for (k, ak) in a.iter_mut().enumerate() {
             for i in 0..16 {
-                *ak += (xin[2 * i] + xin[2 * i + 1]) * (((2 * i + 1) * (2 * k + 1)) as f64 * PI / 64.0).cos();
+                *ak += (xin[2 * i] + xin[2 * i + 1])
+                    * (((2 * i + 1) * (2 * k + 1)) as f64 * PI / 64.0).cos();
             }
         }
         for (k, bk) in b.iter_mut().enumerate() {
             for i in 0..16 {
-                let v = if i > 0 { xin[2 * i] + xin[2 * i - 1] } else { xin[0] };
+                let v = if i > 0 {
+                    xin[2 * i] + xin[2 * i - 1]
+                } else {
+                    xin[0]
+                };
                 *bk += v * ((i * (2 * k + 1)) as f64 * PI / 32.0).cos();
             }
         }
@@ -131,14 +143,23 @@ impl AnalysisBank {
             }
         }
         a /= 32.0;
-        let synthesis_energy = g.iter().map(|gk| gk.iter().map(|v| v * v).sum::<f64>()).sum::<f64>() / BANDS as f64;
+        let synthesis_energy = g
+            .iter()
+            .map(|gk| gk.iter().map(|v| v * v).sum::<f64>())
+            .sum::<f64>()
+            / BANDS as f64;
         for gk in &mut g {
             for v in gk.iter_mut() {
                 *v /= a;
             }
         }
-        let g = (0..IR_LEN).map(|n| std::array::from_fn(|k| g[k][n])).collect();
-        Self { g, synthesis_energy }
+        let g = (0..IR_LEN)
+            .map(|n| std::array::from_fn(|k| g[k][n]))
+            .collect();
+        Self {
+            g,
+            synthesis_energy,
+        }
     }
 
     /// The bank for `FILTS` = 1 (`perfect`) or 0.
@@ -199,13 +220,20 @@ impl LfeDecimator {
         let h = &tables::LFE_FIR_64X;
         // Zero-phase amplitude of a symmetric 512-tap filter from its upper half.
         let basis = |f: f64, k: usize| 2.0 * (2.0 * PI * f / sample_rate * (k as f64 + 0.5)).cos();
-        let h_amp = |f: f64| (0..HALF).map(|k| h[HALF + k] as f64 * basis(f, k)).sum::<f64>();
+        let h_amp = |f: f64| {
+            (0..HALF)
+                .map(|k| h[HALF + k] as f64 * basis(f, k))
+                .sum::<f64>()
+        };
         let nyq = sample_rate / 128.0;
         let mut rows: Vec<(Vec<f64>, f64)> = Vec::new();
         let mut f = 0.0;
         while f <= LFE_PASSBAND_HZ.min(0.45 * nyq) {
             let g = h_amp(f) / LFE_FACTOR as f64;
-            rows.push(((0..HALF).map(|k| PASS_WEIGHT * basis(f, k) * g).collect(), PASS_WEIGHT));
+            rows.push((
+                (0..HALF).map(|k| PASS_WEIGHT * basis(f, k) * g).collect(),
+                PASS_WEIGHT,
+            ));
             f += 1.0;
         }
         const PASS_WEIGHT: f64 = 4.0;
@@ -238,7 +266,9 @@ impl LfeDecimator {
         }
         // Gaussian elimination with partial pivoting.
         for col in 0..HALF {
-            let piv = (col..HALF).max_by(|&a, &b| m[a][col].abs().total_cmp(&m[b][col].abs())).expect("rows");
+            let piv = (col..HALF)
+                .max_by(|&a, &b| m[a][col].abs().total_cmp(&m[b][col].abs()))
+                .expect("rows");
             m.swap(col, piv);
             for r in col + 1..HALF {
                 let fac = m[r][col] / m[col][col];
@@ -289,7 +319,9 @@ mod tests {
         let mut s = seed;
         (0..len)
             .map(|_| {
-                s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+                s = s
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
                 ((s >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * scale
             })
             .collect()
@@ -324,16 +356,22 @@ mod tests {
             let a = LfeDecimator::get(rate);
             let resp = |taps: &[f64], f: f64| {
                 let w = 2.0 * std::f64::consts::PI * f / rate as f64;
-                let (re, im) = taps.iter().enumerate().fold((0.0, 0.0), |(re, im), (n, v)| {
-                    (re + v * (w * n as f64).cos(), im + v * (w * n as f64).sin())
-                });
+                let (re, im) = taps
+                    .iter()
+                    .enumerate()
+                    .fold((0.0, 0.0), |(re, im), (n, v)| {
+                        (re + v * (w * n as f64).cos(), im + v * (w * n as f64).sin())
+                    });
                 (re * re + im * im).sqrt()
             };
             let h: Vec<f64> = tables::LFE_FIR_64X.iter().map(|v| *v as f64).collect();
             let mut f = 0.0;
             while f <= 120.0f64.min(0.4 * rate as f64 / 128.0) {
                 let g = 20.0 * (resp(&a.taps, f) * resp(&h, f) / 64.0).log10();
-                assert!(g.abs() < 0.3, "{rate} Hz: cascade gain {g:+.2} dB at {f} Hz");
+                assert!(
+                    g.abs() < 0.3,
+                    "{rate} Hz: cascade gain {g:+.2} dB at {f} Hz"
+                );
                 f += 5.0;
             }
             // Input above fs/128 folds to `fa` and comes out at the
@@ -364,7 +402,8 @@ mod tests {
             let mut b = Qmf::new();
             let (mut oa, mut ob) = ([0.0; 32], [0.0; 32]);
             for blk in 0..40 {
-                let xin: [f64; 32] = std::array::from_fn(|k| ((blk * 31 + k * 7) % 13) as f64 - 6.0);
+                let xin: [f64; 32] =
+                    std::array::from_fn(|k| ((blk * 31 + k * 7) % 13) as f64 - 6.0);
                 a.run(&xin, perfect, &mut oa);
                 b.synthesize(&xin, perfect, &mut ob);
                 assert_eq!(oa, ob);
@@ -383,7 +422,9 @@ mod tests {
             let input: Vec<f64> = (0..n)
                 .map(|i| {
                     let t = i as f64;
-                    1e6 * (t * 0.0123).sin() + 5e5 * (t * 0.71).sin() + 2e5 * ((i * 7919 % 1000) as f64 / 500.0 - 1.0)
+                    1e6 * (t * 0.0123).sin()
+                        + 5e5 * (t * 0.71).sin()
+                        + 2e5 * ((i * 7919 % 1000) as f64 / 500.0 - 1.0)
                 })
                 .collect();
             let mut padded = vec![0.0; DELAY];
@@ -406,7 +447,10 @@ mod tests {
                 ss += input[i].powi(2);
             }
             let snr = 10.0 * (ss / se).log10();
-            eprintln!("FILTS={}: unquantised round-trip SNR {snr:.1} dB", u8::from(perfect));
+            eprintln!(
+                "FILTS={}: unquantised round-trip SNR {snr:.1} dB",
+                u8::from(perfect)
+            );
             if perfect {
                 assert!(snr > 100.0, "PR bank round trip {snr:.1} dB");
             } else {

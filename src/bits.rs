@@ -117,7 +117,10 @@ mod tests {
         assert_eq!(r.bits(4).unwrap(), 0xA);
         assert!(matches!(
             r.bits(5),
-            Err(Error::Truncated { at_bit: 4, wanted: 5 })
+            Err(Error::Truncated {
+                at_bit: 4,
+                wanted: 5
+            })
         ));
         // A failed read consumes nothing.
         assert_eq!(r.bits(4).unwrap(), 0xB);

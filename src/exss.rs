@@ -4,9 +4,9 @@
 
 use std::ops::Range;
 
+use super::Error;
 use super::bits::BitReader;
 use super::crc::crc16;
-use super::Error;
 
 /// Extension substream sync word (Table 7-1).
 pub(crate) const SYNC_EXSS: u32 = 0x6458_2025;
@@ -49,7 +49,10 @@ pub(crate) struct Asset {
 
 impl Asset {
     pub fn component(&self, bit: u32) -> Option<Range<usize>> {
-        self.components.iter().find(|(b, _)| *b == bit).map(|(_, r)| r.clone())
+        self.components
+            .iter()
+            .find(|(b, _)| *b == bit)
+            .map(|(_, r)| r.clone())
     }
 }
 
@@ -69,13 +72,14 @@ pub(crate) struct ExssFrame {
 
 /// Table 7-9.
 const SAMPLE_RATES_7_9: [u32; 16] = [
-    8_000, 16_000, 32_000, 64_000, 128_000, 22_050, 44_100, 88_200, 176_400, 352_800, 12_000, 24_000, 48_000,
-    96_000, 192_000, 384_000,
+    8_000, 16_000, 32_000, 64_000, 128_000, 22_050, 44_100, 88_200, 176_400, 352_800, 12_000,
+    24_000, 48_000, 96_000, 192_000, 384_000,
 ];
 
 /// `NumSpkrTableLookUp`: channels of a Table 7-10 mask (pairs count two).
 pub(crate) fn num_speakers(mask: u32) -> u32 {
-    const PAIRS: u32 = 0x0002 | 0x0004 | 0x0020 | 0x0040 | 0x0200 | 0x0400 | 0x0800 | 0x2000 | 0x8000;
+    const PAIRS: u32 =
+        0x0002 | 0x0004 | 0x0020 | 0x0040 | 0x0200 | 0x0400 | 0x0800 | 0x2000 | 0x8000;
     (0..16)
         .filter(|b| (mask >> b) & 1 == 1)
         .map(|b| if (PAIRS >> b) & 1 == 1 { 2 } else { 1 })
@@ -111,7 +115,10 @@ pub(crate) fn parse(buf: &[u8]) -> Result<ExssFrame, Error> {
     let header_size = r.bits(bh)? as usize + 1;
     let size = r.bits(bf)? as usize + 1;
     if header_size > size || size > buf.len() {
-        return Err(Error::Truncated { at_bit: buf.len() * 8, wanted: ((size.saturating_sub(buf.len())) * 8) as u32 });
+        return Err(Error::Truncated {
+            at_bit: buf.len() * 8,
+            wanted: ((size.saturating_sub(buf.len())) * 8) as u32,
+        });
     }
     if header_size < 7 || crc16(&buf[5..header_size]) != 0 {
         return Err(Error::Invalid("extension substream header CRC"));
@@ -161,24 +168,43 @@ pub(crate) fn parse(buf: &[u8]) -> Result<ExssFrame, Error> {
         let start = r.position_bits();
         let desc_size = r.bits(9)? as usize + 1;
         let end = start + desc_size * 8;
-        let mut a = parse_asset(&mut r, end, static_fields, mix_enabled, &mix_out_ch, bf, duration)?;
+        let mut a = parse_asset(
+            &mut r,
+            end,
+            static_fields,
+            mix_enabled,
+            &mix_out_ch,
+            bf,
+            duration,
+        )?;
         r.seek_bits(end)?;
         // Components follow one another in mask-bit order (Table 7-15),
         // inside this asset's nuAssetFsize bytes.
         let mut off = data_off;
         let mut comps = Vec::new();
-        for (bit, len) in std::mem::take(&mut a.components).into_iter().map(|(b, r)| (b, r.end)) {
+        for (bit, len) in std::mem::take(&mut a.components)
+            .into_iter()
+            .map(|(b, r)| (b, r.end))
+        {
             comps.push((bit, off..off + len));
             off += len;
         }
         if off > data_off + asize || data_off + asize > size {
-            return Err(Error::Invalid("extension substream components overrun their asset"));
+            return Err(Error::Invalid(
+                "extension substream components overrun their asset",
+            ));
         }
         a.components = comps;
         assets.push(a);
         data_off += asize;
     }
-    Ok(ExssFrame { index, size, duration, assets, bits4fsize: bf })
+    Ok(ExssFrame {
+        index,
+        size,
+        duration,
+        assets,
+        bits4fsize: bf,
+    })
 }
 
 /// One audio asset descriptor ending at bit `end`; `components` come back
@@ -192,7 +218,10 @@ fn parse_asset(
     bf: u32,
     duration: Option<u32>,
 ) -> Result<Asset, Error> {
-    let mut a = Asset { index: r.bits(3)?, ..Default::default() };
+    let mut a = Asset {
+        index: r.bits(3)?,
+        ..Default::default()
+    };
     let mut one2one = false;
     let (mut emb_stereo, mut emb_six) = (false, false);
     if static_fields {

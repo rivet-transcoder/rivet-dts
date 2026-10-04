@@ -56,8 +56,11 @@ static COS_MOD: LazyLock<[f64; 544]> = LazyLock::new(|| {
 /// [`COS_MOD`]'s two 16×16 matrices stored by input (`[i][k]` holds
 /// `raCosMod[16k + i]`, then `raCosMod[256 + 16k + i]`), so that the sums
 /// for all `k` can run together.
-static COS_MOD_T: LazyLock<[[[f64; 16]; 16]; 2]> =
-    LazyLock::new(|| std::array::from_fn(|m| std::array::from_fn(|i| std::array::from_fn(|k| COS_MOD[256 * m + 16 * k + i]))));
+static COS_MOD_T: LazyLock<[[[f64; 16]; 16]; 2]> = LazyLock::new(|| {
+    std::array::from_fn(|m| {
+        std::array::from_fn(|i| std::array::from_fn(|k| COS_MOD[256 * m + 16 * k + i]))
+    })
+});
 
 crate::simd::avx2_or_portable! {
     /// The arithmetic of `QMFInterpolation` (Annex C.3.6) for one block:
@@ -220,8 +223,11 @@ pub struct Qmf64 {
 }
 
 /// [`COS_MOD_64`] stored by `k`: `[k][j]`.
-static COS_MOD_64_T: LazyLock<Vec<[f64; 128]>> =
-    LazyLock::new(|| (0..64).map(|k| std::array::from_fn(|j| COS_MOD_64[j][k])).collect());
+static COS_MOD_64_T: LazyLock<Vec<[f64; 128]>> = LazyLock::new(|| {
+    (0..64)
+        .map(|k| std::array::from_fn(|j| COS_MOD_64[j][k]))
+        .collect()
+});
 
 crate::simd::avx2_or_portable! {
     /// The X96 synthesis' modulation, `v[j] = Σ_k cm[j][k] x[k]` in order
@@ -269,7 +275,11 @@ static COS_MOD_64: LazyLock<Vec<[f64; 64]>> = LazyLock::new(|| {
     (0..128)
         .map(|j| {
             std::array::from_fn(|k| {
-                let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 { 1.0 } else { -1.0 };
+                let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                };
                 s * (PI / 64.0 * (k as f64 + 0.5) * (j as f64 + 32.5)).cos()
             })
         })
@@ -292,7 +302,10 @@ impl Default for Qmf64 {
 
 impl Qmf64 {
     pub fn new() -> Self {
-        Self { v: vec![[0.0; 128]; 16], head: 0 }
+        Self {
+            v: vec![[0.0; 128]; 16],
+            head: 0,
+        }
     }
 
     /// 64 subband samples in, 64 PCM samples (at twice the core rate) out.
@@ -344,7 +357,9 @@ mod tests {
         let mut s = seed;
         (0..len)
             .map(|_| {
-                s = s.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+                s = s
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
                 ((s >> 11) as f64 / (1u64 << 53) as f64 - 0.5) * scale
             })
             .collect()
@@ -352,7 +367,12 @@ mod tests {
 
     /// `QMFInterpolation`'s arithmetic as the pseudocode orders it, one
     /// output at a time.
-    fn literal_interpolate(x: &mut [f64; 512], z: &mut [f64; 64], xin: &[f64; NUM_SUBBANDS], coeff: &[f32; 512]) {
+    fn literal_interpolate(
+        x: &mut [f64; 512],
+        z: &mut [f64; 64],
+        xin: &[f64; NUM_SUBBANDS],
+        coeff: &[f32; 512],
+    ) {
         let cm = &*COS_MOD;
         let mut a = [0.0f64; 16];
         let mut b = [0.0f64; 16];
@@ -365,7 +385,11 @@ mod tests {
         }
         for bk in b.iter_mut() {
             for i in 0..16 {
-                let v = if i > 0 { xin[2 * i] + xin[2 * i - 1] } else { xin[0] };
+                let v = if i > 0 {
+                    xin[2 * i] + xin[2 * i - 1]
+                } else {
+                    xin[0]
+                };
                 *bk += v * cm[j];
                 j += 1;
             }
@@ -396,7 +420,13 @@ mod tests {
     #[test]
     fn synthesis_kernels_match_their_literal_form() {
         let bits = |v: &[f64]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
-        for (seed, scale) in [(1u64, 1.0), (2, 8_388_608.0), (3, 1e-300), (4, 0.0), (5, 1e300)] {
+        for (seed, scale) in [
+            (1u64, 1.0),
+            (2, 8_388_608.0),
+            (3, 1e-300),
+            (4, 0.0),
+            (5, 1e300),
+        ] {
             for coeff in [&tables::QMF_FIR_PERFECT, &tables::QMF_FIR_NON_PERFECT] {
                 let xin: [f64; NUM_SUBBANDS] = noise(32, seed, scale).try_into().unwrap();
                 let mut x1: [f64; 512] = noise(512, seed + 9, scale).try_into().unwrap();
@@ -404,15 +434,23 @@ mod tests {
                 let (mut x2, mut z2) = (x1, z1);
                 qmf_interpolate(&mut x1, &mut z1, &xin, coeff);
                 literal_interpolate(&mut x2, &mut z2, &xin, coeff);
-                assert_eq!((bits(&x1), bits(&z1)), (bits(&x2), bits(&z2)), "seed {seed}");
+                assert_eq!(
+                    (bits(&x1), bits(&z1)),
+                    (bits(&x2), bits(&z2)),
+                    "seed {seed}"
+                );
             }
             // X96: modulation, and the window over a ring at every rotation.
             let xin: [f64; NUM_SUBBANDS_64] = noise(64, seed + 7, scale).try_into().unwrap();
             let mut v = [0.0f64; 128];
             modulate64(&xin, &mut v);
-            let want: Vec<f64> = (0..128).map(|j| COS_MOD_64[j].iter().zip(&xin).map(|(c, x)| c * x).sum()).collect();
+            let want: Vec<f64> = (0..128)
+                .map(|j| COS_MOD_64[j].iter().zip(&xin).map(|(c, x)| c * x).sum())
+                .collect();
             assert_eq!(bits(&v), bits(&want), "modulate64 seed {seed}");
-            let ring: Vec<[f64; 128]> = (0..16).map(|i| noise(128, seed * 100 + i, scale).try_into().unwrap()).collect();
+            let ring: Vec<[f64; 128]> = (0..16)
+                .map(|i| noise(128, seed * 100 + i, scale).try_into().unwrap())
+                .collect();
             for head in 0..16 {
                 let mut out = [0.0f64; 64];
                 window64(&ring, head, &mut out);
@@ -422,10 +460,18 @@ mod tests {
                     for i in 0..16 {
                         let vi = &ring[(head + i) % 16];
                         let n = t + 64 * i;
-                        let val = if (n / 128) % 2 == 1 { -vi[n % 128] } else { vi[n % 128] };
+                        let val = if (n / 128) % 2 == 1 {
+                            -vi[n % 128]
+                        } else {
+                            vi[n % 128]
+                        };
                         acc += g[n] * val;
                     }
-                    assert_eq!(o.to_bits(), f64::to_bits(acc), "window64 seed {seed} head {head} t {t}");
+                    assert_eq!(
+                        o.to_bits(),
+                        f64::to_bits(acc),
+                        "window64 seed {seed} head {head} t {t}"
+                    );
                 }
             }
         }
@@ -458,7 +504,10 @@ mod tests {
             // subbands are missing), so the output is not perfectly flat:
             // the non-perfect prototype ripples < 0.1 %, the perfect one
             // 0.33 %. A shifted or transposed table gives tens of percent.
-            assert!(ripple < 10.0, "perfect={perfect}: ripple {ripple} on a DC input");
+            assert!(
+                ripple < 10.0,
+                "perfect={perfect}: ripple {ripple} on a DC input"
+            );
         }
     }
 
@@ -493,8 +542,21 @@ mod tests {
     /// The D.8 prototype with the signs of every second block of 64 taps
     /// negated back, as `QMFInterpolation` uses it implicitly.
     fn prototype_32(perfect: bool) -> Vec<f64> {
-        let c: &[f32; 512] = if perfect { &tables::QMF_FIR_PERFECT } else { &tables::QMF_FIR_NON_PERFECT };
-        c.iter().enumerate().map(|(n, &v)| if (n / 64) % 2 == 1 { -(v as f64) } else { v as f64 }).collect()
+        let c: &[f32; 512] = if perfect {
+            &tables::QMF_FIR_PERFECT
+        } else {
+            &tables::QMF_FIR_NON_PERFECT
+        };
+        c.iter()
+            .enumerate()
+            .map(|(n, &v)| {
+                if (n / 64) % 2 == 1 {
+                    -(v as f64)
+                } else {
+                    v as f64
+                }
+            })
+            .collect()
     }
 
     /// Spec-derived float reference: C.3.6 is the cosine-modulated bank
@@ -507,7 +569,11 @@ mod tests {
         for perfect in [false, true] {
             let g = prototype_32(perfect);
             let f = |k: usize, n: usize| {
-                let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 { 1.0 } else { -1.0 };
+                let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                };
                 64.0 * s * g[n] * (PI / 32.0 * (k as f64 + 0.5) * (n as f64 + 16.5)).cos()
             };
             for k in 0..32 {
@@ -522,14 +588,19 @@ mod tests {
                     for (t, y) in out.iter().enumerate() {
                         let n = 32 * m + t;
                         let want = if n < 512 { f(k, n) } else { 0.0 };
-                        assert!((y - want).abs() < 1e-9, "perfect={perfect} k={k} n={n}: {y} vs {want}");
+                        assert!(
+                            (y - want).abs() < 1e-9,
+                            "perfect={perfect} k={k} n={n}: {y} vs {want}"
+                        );
                     }
                 }
             }
             // Random subband input against the direct convolution.
             let mut seed = 12345u64;
             let mut rnd = || {
-                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                seed = seed
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 ((seed >> 11) as f64 / (1u64 << 53) as f64) * 2.0 - 1.0
             };
             let x: Vec<[f64; 32]> = (0..24).map(|_| std::array::from_fn(|_| rnd())).collect();
@@ -563,11 +634,19 @@ mod tests {
             .map(|(n, &v)| if (n / 128) % 2 == 1 { -v } else { v })
             .collect();
         let f = |k: usize, n: usize| {
-            let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 { 1.0 } else { -1.0 };
+            let s = if ((2 * k + 1) as f64 * PI / 4.0).cos() > 0.0 {
+                1.0
+            } else {
+                -1.0
+            };
             128.0 * s * g[n] * (PI / 64.0 * (k as f64 + 0.5) * (n as f64 + 32.5)).cos()
         };
         let x: Vec<[f64; 64]> = (0..20)
-            .map(|m| std::array::from_fn(|k| (((m * 64 + k) * 2654435761usize) % 1000) as f64 / 500.0 - 1.0))
+            .map(|m| {
+                std::array::from_fn(|k| {
+                    (((m * 64 + k) * 2654435761usize) % 1000) as f64 / 500.0 - 1.0
+                })
+            })
             .collect();
         let mut q = Qmf64::new();
         let mut got = Vec::new();
@@ -618,7 +697,11 @@ mod tests {
                 (c - 128..=c + 129)
                     .map(|m| {
                         let d = t - m as f64;
-                        let sinc = if d.abs() < 1e-12 { 1.0 } else { (PI * d).sin() / (PI * d) };
+                        let sinc = if d.abs() < 1e-12 {
+                            1.0
+                        } else {
+                            (PI * d).sin() / (PI * d)
+                        };
                         let w = 0.5 + 0.5 * (PI * d / 130.0).cos();
                         y32[m as usize] * sinc * w
                     })
@@ -631,7 +714,10 @@ mod tests {
                 sig += want.powi(2);
             }
             let snr = 10.0 * (sig / err).log10();
-            assert!(snr > 40.0, "band {k}: 64-band vs interpolated 32-band SNR {snr:.1} dB");
+            assert!(
+                snr > 40.0,
+                "band {k}: 64-band vs interpolated 32-band SNR {snr:.1} dB"
+            );
         }
     }
 

@@ -72,7 +72,10 @@ mod tests {
         w.put(0xFF, 8);
         w.put_signed(-2, 2);
         assert_eq!(w.len_bits(), 26);
-        assert_eq!(w.into_bytes(), vec![0b1010_1100, 0b0101_0011, 0xFF, 0b1000_0000]);
+        assert_eq!(
+            w.into_bytes(),
+            vec![0b1010_1100, 0b0101_0011, 0xFF, 0b1000_0000]
+        );
     }
 
     #[test]

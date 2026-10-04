@@ -148,7 +148,12 @@ impl Default for EncoderConfig {
 impl EncoderConfig {
     /// A configuration with the defaults for the other fields.
     pub fn new(sample_rate: u32, layout: Layout, bit_rate: u32) -> Self {
-        Self { sample_rate, layout, bit_rate, ..Self::default() }
+        Self {
+            sample_rate,
+            layout,
+            bit_rate,
+            ..Self::default()
+        }
     }
 }
 
@@ -176,13 +181,21 @@ struct Band {
 impl Band {
     /// The option at `ABITS` = `a`, which must have been made.
     fn opt(&self, a: usize) -> &Opt {
-        self.opts[a].as_ref().expect("an ABITS option looked at before it was made")
+        self.opts[a]
+            .as_ref()
+            .expect("an ABITS option looked at before it was made")
     }
 
     /// The option at `ABITS` = `a`, made now if it was not yet.
     fn ensure(&mut self, a: usize) -> &Opt {
         if self.opts[a].is_none() {
-            self.opts[a] = Some(make_opt(&self.x, a, self.tmode, self.pred.map(|p| p.1), &self.hist));
+            self.opts[a] = Some(make_opt(
+                &self.x,
+                a,
+                self.tmode,
+                self.pred.map(|p| p.1),
+                &self.hist,
+            ));
         }
         self.opt(a)
     }
@@ -234,15 +247,25 @@ impl Encoder {
             48_000 => 13,
             44_100 => 8,
             32_000 => 3,
-            r => return Err(Error::Unsupported(format!("encoder sample rate {r} Hz (48000, 44100 or 32000)"))),
+            r => {
+                return Err(Error::Unsupported(format!(
+                    "encoder sample rate {r} Hz (48000, 44100 or 32000)"
+                )));
+            }
         };
         let rate = RATES
             .iter()
             .find(|(_, r)| *r == cfg.bit_rate)
             .map(|(c, _)| *c)
-            .ok_or_else(|| Error::Unsupported(format!("bit rate {} b/s is not a Table 5-7 rate", cfg.bit_rate)))?;
+            .ok_or_else(|| {
+                Error::Unsupported(format!(
+                    "bit rate {} b/s is not a Table 5-7 rate",
+                    cfg.bit_rate
+                ))
+            })?;
         let frame_bytes =
-            ((cfg.bit_rate as u64 * FRAME_SAMPLES as u64 / cfg.sample_rate as u64 / 8) & !1) as usize;
+            ((cfg.bit_rate as u64 * FRAME_SAMPLES as u64 / cfg.sample_rate as u64 / 8) & !1)
+                as usize;
         if !(96..=16_384).contains(&frame_bytes) {
             return Err(Error::Unsupported(format!(
                 "{} b/s at {} Hz gives {frame_bytes}-byte frames; FSIZE must be 95..=16383",
@@ -258,12 +281,18 @@ impl Encoder {
             .into_iter()
             .find_map(|amode| {
                 let core = crate::layout::amode_speakers(amode)?;
-                let slots: Option<Vec<usize>> = core.iter().map(|c| spk.iter().position(|s| s == c)).collect();
+                let slots: Option<Vec<usize>> = core
+                    .iter()
+                    .map(|c| spk.iter().position(|s| s == c))
+                    .collect();
                 let slots = slots?;
                 (slots.len() + lfe_slot.is_some() as usize == spk.len()).then_some((amode, slots))
             })
             .ok_or_else(|| {
-                Error::Unsupported(format!("layout {} is not a core channel arrangement", cfg.layout))
+                Error::Unsupported(format!(
+                    "layout {} is not a core channel arrangement",
+                    cfg.layout
+                ))
             })?;
         let channels = core_slots.len();
         // Minimum frame: headers, side information for every band and a
@@ -319,7 +348,9 @@ impl Encoder {
     /// completed by them.
     pub fn encode(&mut self, interleaved: &[f32]) -> Result<Vec<Vec<u8>>, Error> {
         if !interleaved.len().is_multiple_of(self.in_channels) {
-            return Err(Error::Invalid("interleaved input is not a whole number of sample frames"));
+            return Err(Error::Invalid(
+                "interleaved input is not a whole number of sample frames",
+            ));
         }
         for frame in interleaved.chunks_exact(self.in_channels) {
             for (c, &slot) in self.core_slots.iter().enumerate() {
@@ -343,7 +374,11 @@ impl Encoder {
         let needed = (DELAY as u64 + self.received).div_ceil(FRAME_SAMPLES as u64);
         let mut out = Vec::new();
         while self.frames < needed {
-            for b in self.buf.iter_mut().chain(std::iter::once(&mut self.lfe_buf)) {
+            for b in self
+                .buf
+                .iter_mut()
+                .chain(std::iter::once(&mut self.lfe_buf))
+            {
                 if b.len() < LOOKAHEAD {
                     b.resize(LOOKAHEAD, 0.0);
                 }
@@ -402,7 +437,8 @@ impl Encoder {
         }
         let lfe_q = lfe.then(|| {
             let dec = LfeDecimator::get(self.cfg.sample_rate);
-            let d: [f64; LFE_SAMPLES] = std::array::from_fn(|j| dec.decimate(&self.lfe_buf[64 * j..64 * j + LFE_TAPS]));
+            let d: [f64; LFE_SAMPLES] =
+                std::array::from_fn(|j| dec.decimate(&self.lfe_buf[64 * j..64 * j + LFE_TAPS]));
             quantise_lfe(&d)
         });
 
@@ -418,11 +454,19 @@ impl Encoder {
         // History for the next frame's prediction.
         for (c, chb) in bands.iter().enumerate() {
             for (k, b) in chb.iter().enumerate() {
-                let rec = if b.a > 0 { b.opt(b.a).rec } else { [0.0; SUBBAND_SAMPLES] };
+                let rec = if b.a > 0 {
+                    b.opt(b.a).rec
+                } else {
+                    [0.0; SUBBAND_SAMPLES]
+                };
                 self.hist[c][k] = std::array::from_fn(|n| rec[SUBBAND_SAMPLES - 1 - n]);
             }
         }
-        for b in self.buf.iter_mut().chain(std::iter::once(&mut self.lfe_buf)) {
+        for b in self
+            .buf
+            .iter_mut()
+            .chain(std::iter::once(&mut self.lfe_buf))
+        {
             b.drain(..FRAME_SAMPLES.min(b.len()));
         }
         self.frames += 1;
@@ -451,9 +495,11 @@ impl Encoder {
                 let half = SUBBAND_SAMPLES / 2;
                 let peak = |s: &[f64]| s.iter().fold(0.0f64, |m, v| m.max(v.abs()));
                 let (p0, p1) = (peak(&xk[..half]), peak(&xk[half..]));
-                let tmode = self.cfg.transients && (p1 > 4.0 * p0 || p0 > 8.0 * p1) && p0.max(p1) > 64.0;
+                let tmode =
+                    self.cfg.transients && (p1 > 4.0 * p0 || p0 > 8.0 * p1) && p0.max(p1) > 64.0;
                 let pred = self.cfg.adpcm_codebook.as_deref().and_then(|book| {
-                    adpcm::best_vector(book, &self.hist[c][k], &xk).map(|(pvq, _)| (pvq, book.coefficients(pvq)))
+                    adpcm::best_vector(book, &self.hist[c][k], &xk)
+                        .map(|(pvq, _)| (pvq, book.coefficients(pvq)))
                 });
                 let mut b = Band {
                     tmode,
@@ -501,11 +547,17 @@ impl Encoder {
         // Per channel decisions.
         let nsubs: Vec<usize> = bands
             .iter()
-            .map(|chb| chb.iter().rposition(|b| b.a > 0).map_or(2, |k| (k + 1).max(2)))
+            .map(|chb| {
+                chb.iter()
+                    .rposition(|b| b.a > 0)
+                    .map_or(2, |k| (k + 1).max(2))
+            })
             .collect();
         let sel: Vec<[usize; 10]> = bands.iter().map(|chb| choose_sel(chb)).collect();
-        let bhuff: Vec<u32> =
-            bands.iter().map(|chb| if chb.iter().all(|b| b.a <= 15) { 5 } else { 6 }).collect();
+        let bhuff: Vec<u32> = bands
+            .iter()
+            .map(|chb| if chb.iter().all(|b| b.a <= 15) { 5 } else { 6 })
+            .collect();
         let scale_lists: Vec<Vec<usize>> = bands
             .iter()
             .zip(&nsubs)
@@ -646,11 +698,21 @@ impl Encoder {
 /// The coding a band with `ABITS` = `a` is written with, given the
 /// channel's `SEL` choices.
 fn coding_for(a: usize, sel: &[usize; 10]) -> Coding {
-    if a <= 10 { entropy::codings(a as u32)[sel[a - 1]] } else { entropy::codings(a as u32)[0] }
+    if a <= 10 {
+        entropy::codings(a as u32)[sel[a - 1]]
+    } else {
+        entropy::codings(a as u32)[0]
+    }
 }
 
 /// The quantisation of one band at `ABITS` = `a`.
-fn make_opt(x: &[f64; SUBBAND_SAMPLES], a: usize, tmode: bool, pred: Option<[f64; ADPCM_ORDER]>, hist: &[f64; ADPCM_ORDER]) -> Opt {
+fn make_opt(
+    x: &[f64; SUBBAND_SAMPLES],
+    a: usize,
+    tmode: bool,
+    pred: Option<[f64; ADPCM_ORDER]>,
+    hist: &[f64; ADPCM_ORDER],
+) -> Opt {
     let mut opt = Opt {
         q: [0; SUBBAND_SAMPLES],
         sf: [0; 2],
@@ -682,10 +744,15 @@ fn make_opt(x: &[f64; SUBBAND_SAMPLES], a: usize, tmode: bool, pred: Option<[f64
     let seg_peak = |r: std::ops::Range<usize>| target[r].iter().fold(0.0f64, |m, v| m.max(v.abs()));
     let pick_sf = |peak: f64| {
         let reach = qmax as f64 * step;
-        (0..63).find(|&i| tables::SCALE_RMS_6BIT[i] as f64 * reach >= peak).unwrap_or(62)
+        (0..63)
+            .find(|&i| tables::SCALE_RMS_6BIT[i] as f64 * reach >= peak)
+            .unwrap_or(62)
     };
     if tmode {
-        opt.sf = [pick_sf(seg_peak(0..half)), pick_sf(seg_peak(half..SUBBAND_SAMPLES))];
+        opt.sf = [
+            pick_sf(seg_peak(0..half)),
+            pick_sf(seg_peak(half..SUBBAND_SAMPLES)),
+        ];
     } else {
         let s = pick_sf(seg_peak(0..SUBBAND_SAMPLES));
         opt.sf = [s, s];
@@ -694,7 +761,9 @@ fn make_opt(x: &[f64; SUBBAND_SAMPLES], a: usize, tmode: bool, pred: Option<[f64
     for m in 0..SUBBAND_SAMPLES {
         let delta = step * tables::SCALE_RMS_6BIT[opt.sf[usize::from(m >= half)]] as f64;
         let p = pred.map_or(0.0, |c| (0..ADPCM_ORDER).map(|n| c[n] * h[n]).sum());
-        let q = ((x[m] - p) / delta).round().clamp(-qmax as f64, qmax as f64) as i32;
+        let q = ((x[m] - p) / delta)
+            .round()
+            .clamp(-qmax as f64, qmax as f64) as i32;
         let rec = q as f64 * delta + p;
         opt.q[m] = q;
         opt.rec[m] = rec;
@@ -742,7 +811,11 @@ fn group_bits(chb: &[Band], a: usize) -> u64 {
                 }
                 sum += c as u64;
             }
-            let adj = if a <= 10 && entropy::codings(a as u32)[sel].is_huffman() && sum > 0 { 2 } else { 0 };
+            let adj = if a <= 10 && entropy::codings(a as u32)[sel].is_huffman() && sum > 0 {
+                2
+            } else {
+                0
+            };
             sum + adj
         })
         .min()
@@ -763,7 +836,11 @@ fn choose_sel(chb: &[Band]) -> [usize; 10] {
             for b in chb.iter().filter(|b| b.a == a) {
                 any = true;
                 let c = b.opt(a).cost[sel];
-                sum = if c == u32::MAX { u64::MAX } else { sum.saturating_add(c as u64) };
+                sum = if c == u32::MAX {
+                    u64::MAX
+                } else {
+                    sum.saturating_add(c as u64)
+                };
             }
             if !any {
                 return codings.len() - 1;
@@ -827,12 +904,28 @@ fn allocate(bands: &mut [Vec<Band>], budget: usize) {
         }
         Some(noise / b.mask.max(1e-30))
     };
-    let mut nmr: Vec<Vec<Option<f64>>> = bands.iter().map(|chb| chb.iter().map(ratio).collect()).collect();
+    let mut nmr: Vec<Vec<Option<f64>>> = bands
+        .iter()
+        .map(|chb| chb.iter().map(ratio).collect())
+        .collect();
     // tally[c][a][sel] = (sum of the codable costs, count of uncodable ones)
     // over channel c's bands at ABITS a > 0. Every band starts at 0.
     let mut tally: Vec<Vec<Vec<(u64, u32)>>> = bands
         .iter()
-        .map(|_| (0..=MAX_ABITS).map(|a| vec![(0, 0); if a == 0 { 0 } else { entropy::codings(a as u32).len() }]).collect())
+        .map(|_| {
+            (0..=MAX_ABITS)
+                .map(|a| {
+                    vec![
+                        (0, 0);
+                        if a == 0 {
+                            0
+                        } else {
+                            entropy::codings(a as u32).len()
+                        }
+                    ]
+                })
+                .collect()
+        })
         .collect();
     let shift = |t: &mut [(u64, u32)], cost: &[u32], add: bool| {
         for (slot, &c) in t.iter_mut().zip(cost) {
@@ -855,7 +948,11 @@ fn allocate(bands: &mut [Vec<Band>], budget: usize) {
                 if bad > 0 {
                     return u64::MAX;
                 }
-                let adj = if a <= 10 && coding.is_huffman() && sum > 0 { 2 } else { 0 };
+                let adj = if a <= 10 && coding.is_huffman() && sum > 0 {
+                    2
+                } else {
+                    0
+                };
                 sum + adj
             })
             .min()
@@ -887,7 +984,10 @@ fn allocate(bands: &mut [Vec<Band>], budget: usize) {
         shift(&mut tally[c][to], &band.opt(to).cost, true);
         let new_from = group(&tally[c][from], from);
         let new_to = group(&tally[c][to], to);
-        debug_assert_eq!((new_from, new_to), (group_bits(&bands[c], from), group_bits(&bands[c], to)));
+        debug_assert_eq!(
+            (new_from, new_to),
+            (group_bits(&bands[c], from), group_bits(&bands[c], to))
+        );
         let band = &mut bands[c][k];
         let side = if from == 0 { side_bits(band) as u64 } else { 0 };
         let next = used
@@ -930,7 +1030,11 @@ impl Leader {
     fn new(nmr: &[Vec<Option<f64>>]) -> Self {
         let width = nmr.first().map_or(1, Vec::len);
         let n = (nmr.len() * width).next_power_of_two();
-        let mut l = Self { width, tree: vec![None; 2 * n], nans: 0 };
+        let mut l = Self {
+            width,
+            tree: vec![None; 2 * n],
+            nans: 0,
+        };
         for (c, row) in nmr.iter().enumerate() {
             for (k, &r) in row.iter().enumerate() {
                 l.tree[n + c * width + k] = r.map(|v| (v, c * width + k));
@@ -991,7 +1095,10 @@ fn quantise_lfe(d: &[f64; LFE_SAMPLES]) -> ([i32; LFE_SAMPLES], usize) {
         .find(|&i| tables::SCALE_RMS_7BIT[i] as f64 * 0.035 * 127.0 >= peak)
         .unwrap_or(124);
     let step = tables::SCALE_RMS_7BIT[idx] as f64 * 0.035;
-    (d.map(|v| (v / step).round().clamp(-128.0, 127.0) as i32), idx)
+    (
+        d.map(|v| (v / step).round().clamp(-128.0, 127.0) as i32),
+        idx,
+    )
 }
 
 #[cfg(test)]
@@ -1014,7 +1121,9 @@ mod tests {
     #[test]
     fn adpcm_quantisation_matches_the_reference_inverse() {
         let book = AdpcmCodebook::private_test_book();
-        let sig: Vec<f64> = (0..36).map(|n| 3.0e5 * (0.7 * n as f64).sin() + 2.0e4 * (2.1 * n as f64).cos()).collect();
+        let sig: Vec<f64> = (0..36)
+            .map(|n| 3.0e5 * (0.7 * n as f64).sin() + 2.0e4 * (2.1 * n as f64).cos())
+            .collect();
         let hist = [sig[3], sig[2], sig[1], sig[0]];
         let x: [f64; 16] = std::array::from_fn(|m| sig[4 + m]);
         let (pvq, gain) = adpcm::best_vector(&book, &hist, &x).expect("predictable");
@@ -1037,7 +1146,10 @@ mod tests {
                 snr(o.noise),
                 snr(plain.noise)
             );
-            assert!(o.noise < plain.noise, "prediction must help a predictable signal at ABITS {a}");
+            assert!(
+                o.noise < plain.noise,
+                "prediction must help a predictable signal at ABITS {a}"
+            );
         }
     }
 

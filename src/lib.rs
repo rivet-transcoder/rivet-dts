@@ -168,7 +168,9 @@ fn core_speakers(amode: u32) -> Result<&'static [Speaker], Error> {
                 AMODE_CHANNELS[amode as usize]
             ))
         } else {
-            Error::Unsupported(format!("AMODE {amode} is a user-defined channel arrangement"))
+            Error::Unsupported(format!(
+                "AMODE {amode} is a user-defined channel arrangement"
+            ))
         }
     })
 }
@@ -198,7 +200,10 @@ struct FrameHeader {
 /// to the frame before anything else is decoded.
 fn frame_len_of(buf: &[u8]) -> Result<usize, Error> {
     if buf.len() < 8 {
-        return Err(Error::Truncated { at_bit: buf.len() * 8, wanted: 64 });
+        return Err(Error::Truncated {
+            at_bit: buf.len() * 8,
+            wanted: 64,
+        });
     }
     let mut r = BitReader::new(buf);
     let sync = r.bits(32)?;
@@ -245,7 +250,8 @@ fn parse_header(r: &mut BitReader) -> Result<FrameHeader, Error> {
 
     if ftype == 0 {
         return Err(Error::Unsupported(
-            "termination frame (FTYPE = 0, partial subsubframes) — only normal frames are decoded".into(),
+            "termination frame (FTYPE = 0, partial subsubframes) — only normal frames are decoded"
+                .into(),
         ));
     }
     if nblks < 5 {
@@ -269,7 +275,9 @@ fn parse_header(r: &mut BitReader) -> Result<FrameHeader, Error> {
     let subframes = r.bits(4)? as usize + 1;
     let channels = r.bits(3)? as usize + 1;
     if channels > MAX_CHANNELS {
-        return Err(Error::Invalid("more than five primary channels in the core"));
+        return Err(Error::Invalid(
+            "more than five primary channels in the core",
+        ));
     }
     if channels != AMODE_CHANNELS[amode as usize] {
         return Err(Error::Invalid("PCHS disagrees with AMODE"));
@@ -322,12 +330,26 @@ pub struct Extensions {
 
 impl Extensions {
     /// None: the core alone.
-    pub const NONE: Extensions =
-        Extensions { xch: false, xxch: false, x96: false, xbr: false, exss: false, xll: false, lbr: false };
+    pub const NONE: Extensions = Extensions {
+        xch: false,
+        xxch: false,
+        x96: false,
+        xbr: false,
+        exss: false,
+        xll: false,
+        lbr: false,
+    };
     /// Every extension this decoder decodes (XCh, XXCH, X96, XBR and the
     /// extension substream that carries them; XLL and LBR are not decoded).
-    pub const ALL: Extensions =
-        Extensions { xch: true, xxch: true, x96: true, xbr: true, exss: true, xll: false, lbr: false };
+    pub const ALL: Extensions = Extensions {
+        xch: true,
+        xxch: true,
+        x96: true,
+        xbr: true,
+        exss: true,
+        xll: false,
+        lbr: false,
+    };
 
     fn any(&self) -> bool {
         self.xch || self.xxch || self.x96 || self.xbr || self.exss || self.xll || self.lbr
@@ -392,7 +414,11 @@ pub fn frame_len(buf: &[u8]) -> Result<usize> {
 /// Up to three zero bytes of DWORD padding (7.5.1) at `off`.
 fn skip_padding(buf: &[u8], mut off: usize) -> usize {
     let mut n = 0;
-    while n < 3 && off < buf.len() && buf[off] == 0 && !buf[off..].starts_with(&exss::SYNC_EXSS.to_be_bytes()) {
+    while n < 3
+        && off < buf.len()
+        && buf[off] == 0
+        && !buf[off..].starts_with(&exss::SYNC_EXSS.to_be_bytes())
+    {
         off += 1;
         n += 1;
     }
@@ -400,7 +426,8 @@ fn skip_padding(buf: &[u8], mut off: usize) -> usize {
 }
 
 fn be32(buf: &[u8], off: usize) -> Option<u32> {
-    buf.get(off..off + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+    buf.get(off..off + 4)
+        .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
 }
 
 /// The length of the DTS packet (one access unit) at the start of `buf`: a
@@ -451,13 +478,24 @@ pub fn normalize_framing(raw: &[u8]) -> Result<std::borrow::Cow<'_, [u8]>> {
     let le16 = find(&[0xFE, 0x7F, 0x01, 0x80]);
     let be14 = find(&[0x1F, 0xFF, 0xE8, 0x00, 0x07]);
     let le14 = find(&[0xFF, 0x1F, 0x00, 0xE8]);
-    let first = [be16, le16, be14, le14].iter().enumerate().filter_map(|(i, p)| p.map(|p| (p, i))).min();
+    let first = [be16, le16, be14, le14]
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| p.map(|p| (p, i)))
+        .min();
     let Some((start, kind)) = first else {
         return Err(Error::NoSync);
     };
     match kind {
         0 => Ok(Cow::Borrowed(raw)),
-        1 => Ok(Cow::Owned(raw[start..].as_chunks::<2>().0.iter().flat_map(|w| [w[1], w[0]]).collect())),
+        1 => Ok(Cow::Owned(
+            raw[start..]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .flat_map(|w| [w[1], w[0]])
+                .collect(),
+        )),
         _ => {
             // 14-bit: words of 14 payload bits. Split at each sync (three
             // words: 0x1FFF 0xE800 0x07Fx) and repack each frame's words
@@ -467,14 +505,22 @@ pub fn normalize_framing(raw: &[u8]) -> Result<std::borrow::Cow<'_, [u8]>> {
                 .as_chunks::<2>()
                 .0
                 .iter()
-                .map(|w| if le { u16::from_le_bytes([w[0], w[1]]) } else { u16::from_be_bytes([w[0], w[1]]) })
+                .map(|w| {
+                    if le {
+                        u16::from_le_bytes([w[0], w[1]])
+                    } else {
+                        u16::from_be_bytes([w[0], w[1]])
+                    }
+                })
                 .collect();
             let mut out = Vec::with_capacity(words.len() * 14 / 8 + 8);
             let mut i = 0;
             while i < words.len() {
                 let mut j = i + 3;
                 while j + 2 < words.len()
-                    && !(words[j] == 0x1FFF && words[j + 1] == 0xE800 && words[j + 2] & 0x3FF0 == 0x07F0)
+                    && !(words[j] == 0x1FFF
+                        && words[j + 1] == 0xE800
+                        && words[j + 2] & 0x3FF0 == 0x07F0)
                 {
                     j += 1;
                 }
@@ -601,7 +647,11 @@ impl Decoder {
     /// XBR and the extension substream are skipped (and reported in
     /// [`CoreInfo::skipped`]). Off by default.
     pub fn set_core_only(&mut self, core_only: bool) {
-        self.set_extensions(if core_only { Extensions::NONE } else { Extensions::ALL });
+        self.set_extensions(if core_only {
+            Extensions::NONE
+        } else {
+            Extensions::ALL
+        });
     }
 
     /// Choose which extensions to decode (default [`Extensions::ALL`]):
@@ -640,7 +690,10 @@ impl Decoder {
                     }
                     let size = exss::frame_size(&packet[at..])?;
                     if at + size > packet.len() {
-                        return Err(Error::Truncated { at_bit: packet.len() * 8, wanted: ((at + size - packet.len()) * 8) as u32 });
+                        return Err(Error::Truncated {
+                            at_bit: packet.len() * 8,
+                            wanted: ((at + size - packet.len()) * 8) as u32,
+                        });
                     }
                     exss_frames.push(&packet[at..at + size]);
                     next = at + size;
@@ -650,7 +703,10 @@ impl Decoder {
             } else if sync == exss::SYNC_EXSS && off == 0 {
                 let size = exss::frame_size(packet)?;
                 if size > packet.len() {
-                    return Err(Error::Truncated { at_bit: packet.len() * 8, wanted: ((size - packet.len()) * 8) as u32 });
+                    return Err(Error::Truncated {
+                        at_bit: packet.len() * 8,
+                        wanted: ((size - packet.len()) * 8) as u32,
+                    });
                 }
                 let f = exss::parse(&packet[..size])?;
                 let core_range = f
@@ -700,7 +756,11 @@ impl Decoder {
     /// How many subband predictions so far were estimated
     /// ([`AdpcmFallback::Estimate`]) rather than decoded.
     pub fn adpcm_estimated(&self) -> u64 {
-        self.core.iter().chain(&self.ext).map(|s| s.pred.estimated + s.pred96.estimated).sum()
+        self.core
+            .iter()
+            .chain(&self.ext)
+            .map(|s| s.pred.estimated + s.pred96.estimated)
+            .sum()
     }
 
     fn ext_state(&mut self, i: usize) -> &mut ChState {
@@ -735,8 +795,11 @@ impl Decoder {
         let p = &h.params;
         let n = p.n;
         let blocks = h.total_samples / 32;
-        let step_table: &[u32; 27] =
-            if h.lossless_steps { &tables::STEP_SIZE_LOSSLESS_Q22 } else { &tables::STEP_SIZE_LOSSY_Q22 };
+        let step_table: &[u32; 27] = if h.lossless_steps {
+            &tables::STEP_SIZE_LOSSLESS_Q22
+        } else {
+            &tables::STEP_SIZE_LOSSY_Q22
+        };
         let (front_pair, surround_pair) = sum_diff_pairs(h.amode);
         let adpcm_book = self.adpcm_book.clone();
         let hf_book = self.hf_book.clone();
@@ -749,7 +812,8 @@ impl Decoder {
         };
 
         let mut bufs: Vec<ChannelBuf> = (0..n).map(|_| ChannelBuf::new(NSB, blocks)).collect();
-        let mut pred: Vec<adpcm::PredictorState> = self.core[..n].iter().map(|s| s.pred.clone()).collect();
+        let mut pred: Vec<adpcm::PredictorState> =
+            self.core[..n].iter().map(|s| s.pred.clone()).collect();
         for pr in &mut pred {
             pr.begin_frame(h.hflag);
         }
@@ -768,10 +832,16 @@ impl Decoder {
             let ssc = r.bits(2)? as usize + 1;
             let psc = r.bits(3)?;
             if psc != 0 {
-                return Err(Error::Invalid("partial subsubframe (PSC) in a normal frame"));
+                return Err(Error::Invalid(
+                    "partial subsubframe (PSC) in a normal frame",
+                ));
             }
             let si = core::parse_side_info(&mut r, p, ssc)?;
-            let rng = if h.dynf { tables::DRC_MULTIPLIER[r.bits(8)? as usize] as f64 } else { 1.0 };
+            let rng = if h.dynf {
+                tables::DRC_MULTIPLIER[r.bits(8)? as usize] as f64
+            } else {
+                1.0
+            };
             if h.cpf {
                 let _sicrc = r.bits(16)?;
             }
@@ -799,7 +869,16 @@ impl Decoder {
             }
 
             for ssf in 0..ssc {
-                core::read_subsubframe(&mut r, p, &si, ssf, t0 + 8 * ssf, &ctx, &mut bufs, &mut pred)?;
+                core::read_subsubframe(
+                    &mut r,
+                    p,
+                    &si,
+                    ssf,
+                    t0 + 8 * ssf,
+                    &ctx,
+                    &mut bufs,
+                    &mut pred,
+                )?;
             }
             core::finish_estimates(p, &si, t0, 8 * ssc, &ctx, &mut bufs, &mut pred);
             core::apply_joint(p, &si, &mut bufs, &[], t0, 8 * ssc);
@@ -842,7 +921,13 @@ impl Decoder {
             .into_iter()
             .zip(core_tmode)
             .enumerate()
-            .map(|(i, (buf, tmode))| Channel { speaker: core_spk[i], buf, shuff: p.shuff[i], tmode, state: StateId::Core(i) })
+            .map(|(i, (buf, tmode))| Channel {
+                speaker: core_spk[i],
+                buf,
+                shuff: p.shuff[i],
+                tmode,
+                state: StateId::Core(i),
+            })
             .collect();
         let mut ext_pred: Vec<(usize, adpcm::PredictorState)> = Vec::new();
         let mut x96: Option<(Vec<ChannelBuf>, Vec<adpcm::PredictorState>)> = None;
@@ -883,7 +968,9 @@ impl Decoder {
                             found.x96 = true;
                         }
                     }
-                    Some(ext::SYNC_XXCH) if h.ext_audio_id == 6 && ext::parse_xxch_header(&core[at..]).is_ok() => {
+                    Some(ext::SYNC_XXCH)
+                        if h.ext_audio_id == 6 && ext::parse_xxch_header(&core[at..]).is_ok() =>
+                    {
                         in_core.push((ext::SYNC_XXCH, at));
                         found.xxch = true;
                     }
@@ -909,7 +996,12 @@ impl Decoder {
         let asset0 = parsed_exss
             .iter()
             .find(|(_, fr)| fr.index == 0)
-            .and_then(|(f, fr)| fr.assets.first().filter(|a| a.coding_mode == 0).map(|a| (*f, a.clone())));
+            .and_then(|(f, fr)| {
+                fr.assets
+                    .first()
+                    .filter(|a| a.coding_mode == 0)
+                    .map(|a| (*f, a.clone()))
+            });
 
         let mut used = Extensions::default();
         let en = self.enabled;
@@ -918,36 +1010,67 @@ impl Decoder {
             used.exss = found.exss && en.exss;
             let ext_ctx = &ctx;
             // XCh.
-            if let Some(&(_, at)) = in_core.iter().find(|(s, _)| *s == ext::SYNC_XCH).filter(|_| en.xch) {
+            if let Some(&(_, at)) = in_core
+                .iter()
+                .find(|(s, _)| *s == ext::SYNC_XCH)
+                .filter(|_| en.xch)
+            {
                 let mut xr = BitReader::new(&core[at..]);
                 let lower_subs: Vec<usize> = (0..n).map(|i| p.subs[i]).collect();
                 let (_fsize, xp) = ext::parse_xch_header(&mut xr, h.cpf, &lower_subs)?;
-                let mut xb: Vec<ChannelBuf> = (0..xp.n).map(|_| ChannelBuf::new(NSB, blocks)).collect();
+                let mut xb: Vec<ChannelBuf> =
+                    (0..xp.n).map(|_| ChannelBuf::new(NSB, blocks)).collect();
                 let base = 0;
-                let mut xpred: Vec<adpcm::PredictorState> =
-                    (0..xp.n).map(|i| self.ext_state(base + i).pred.clone()).collect();
+                let mut xpred: Vec<adpcm::PredictorState> = (0..xp.n)
+                    .map(|i| self.ext_state(base + i).pred.clone())
+                    .collect();
                 for pr in &mut xpred {
                     pr.begin_frame(h.hflag);
                 }
                 let lower: Vec<&ChannelBuf> = channels.iter().map(|c| &c.buf).collect();
-                let tmodes =
-                    ext::decode_set_subframes(&mut xr, &xp, &lower, &cc, ext_ctx, &mut xb, &mut xpred, &mut hf_skipped, " of XCh")?;
+                let tmodes = ext::decode_set_subframes(
+                    &mut xr,
+                    &xp,
+                    &lower,
+                    &cc,
+                    ext_ctx,
+                    &mut xb,
+                    &mut xpred,
+                    &mut hf_skipped,
+                    " of XCh",
+                )?;
                 if xp.n != 1 {
-                    return Err(Error::Unsupported(format!("XCh with {} channels (only the back centre is defined)", xp.n)));
+                    return Err(Error::Unsupported(format!(
+                        "XCh with {} channels (only the back centre is defined)",
+                        xp.n
+                    )));
                 }
                 let src = channels.len();
                 for (i, (buf, pr)) in xb.into_iter().zip(xpred).enumerate() {
                     let tmode = tmodes.iter().map(|t| t[i]).collect();
-                    channels.push(Channel { speaker: Speaker::BC, buf, shuff: xp.shuff[i], tmode, state: StateId::Ext(base + i) });
+                    channels.push(Channel {
+                        speaker: Speaker::BC,
+                        buf,
+                        shuff: xp.shuff[i],
+                        tmode,
+                        state: StateId::Ext(base + i),
+                    });
                     ext_pred.push((base + i, pr));
                 }
                 let targets: Vec<(usize, f64)> = channels
                     .iter()
                     .enumerate()
-                    .filter(|(_, c)| matches!(c.speaker, Speaker::SL | Speaker::SR) && matches!(c.state, StateId::Core(_)))
+                    .filter(|(_, c)| {
+                        matches!(c.speaker, Speaker::SL | Speaker::SR)
+                            && matches!(c.state, StateId::Core(_))
+                    })
                     .map(|(i, _)| (i, XCH_DOWNMIX))
                     .collect();
-                downmixes.push(Downmix { source: src, targets, scale: None });
+                downmixes.push(Downmix {
+                    source: src,
+                    targets,
+                    scale: None,
+                });
                 used.xch = true;
             }
             // XXCH, in the core or in asset 0.
@@ -956,12 +1079,16 @@ impl Decoder {
                 .find(|(s, _)| *s == ext::SYNC_XXCH)
                 .map(|&(_, at)| &core[at..])
                 .or_else(|| {
-                    asset0.as_ref().and_then(|(f, a)| a.component(exss::mask::EXSS_XXCH).map(|rg| &f[rg]))
+                    asset0
+                        .as_ref()
+                        .and_then(|(f, a)| a.component(exss::mask::EXSS_XXCH).map(|rg| &f[rg]))
                 });
             if let Some(data) = xxch_bytes.filter(|_| en.xxch) {
                 let xh = ext::parse_xxch_header(data)?;
                 // The core's speakers by the XXCH core activity mask.
-                let core_bits: Vec<u32> = (0..32).filter(|b| (xh.core_mask >> b) & 1 == 1 && *b != 5).collect();
+                let core_bits: Vec<u32> = (0..32)
+                    .filter(|b| (xh.core_mask >> b) & 1 == 1 && *b != 5)
+                    .collect();
                 if core_bits.len() == n {
                     for (c, b) in channels.iter_mut().zip(&core_bits) {
                         c.speaker = layout::xxch_mask_speaker(*b).unwrap_or(c.speaker);
@@ -969,18 +1096,24 @@ impl Decoder {
                 } else {
                     core_lfe_mask_ok = false;
                 }
-                let mut next_state = channels.iter().filter(|c| matches!(c.state, StateId::Ext(_))).count();
+                let mut next_state = channels
+                    .iter()
+                    .filter(|c| matches!(c.state, StateId::Ext(_)))
+                    .count();
                 let mut lower_subs: Vec<usize> = (0..n).map(|i| p.subs[i]).collect();
                 lower_subs.extend(std::iter::repeat_n(0, channels.len() - n));
                 for &(s0, s1) in &xh.sets {
                     let set_bytes = &data[s0..s1];
                     let mut xr = BitReader::new(set_bytes);
-                    let (set, hsize) = ext::parse_xxch_set_header(&mut xr, set_bytes, &xh, &lower_subs)?;
+                    let (set, hsize) =
+                        ext::parse_xxch_set_header(&mut xr, set_bytes, &xh, &lower_subs)?;
                     xr.seek_bits(hsize * 8)?;
                     let k = set.params.n;
-                    let mut xb: Vec<ChannelBuf> = (0..k).map(|_| ChannelBuf::new(NSB, blocks)).collect();
-                    let mut xpred: Vec<adpcm::PredictorState> =
-                        (0..k).map(|i| self.ext_state(next_state + i).pred.clone()).collect();
+                    let mut xb: Vec<ChannelBuf> =
+                        (0..k).map(|_| ChannelBuf::new(NSB, blocks)).collect();
+                    let mut xpred: Vec<adpcm::PredictorState> = (0..k)
+                        .map(|i| self.ext_state(next_state + i).pred.clone())
+                        .collect();
                     for pr in &mut xpred {
                         pr.begin_frame(h.hflag);
                     }
@@ -1003,7 +1136,13 @@ impl Decoder {
                             .ok_or(Error::Invalid("XXCH speaker mask bit with no position"))?;
                         let tmode = tmodes.iter().map(|t| t[i]).collect();
                         let shuff = set.params.shuff[i];
-                        channels.push(Channel { speaker, buf, shuff, tmode, state: StateId::Ext(next_state + i) });
+                        channels.push(Channel {
+                            speaker,
+                            buf,
+                            shuff,
+                            tmode,
+                            state: StateId::Ext(next_state + i),
+                        });
                         ext_pred.push((next_state + i, pr));
                     }
                     if let Some((coeffs, scale)) = &set.downmix {
@@ -1011,11 +1150,18 @@ impl Decoder {
                             let mut targets = Vec::new();
                             for &(bit, gain) in c {
                                 let spk = layout::xxch_mask_speaker(bit);
-                                if let Some(t) = channels[..first].iter().position(|ch| Some(ch.speaker) == spk) {
+                                if let Some(t) = channels[..first]
+                                    .iter()
+                                    .position(|ch| Some(ch.speaker) == spk)
+                                {
                                     targets.push((t, gain));
                                 }
                             }
-                            downmixes.push(Downmix { source: first + i, targets, scale: (i == 0).then_some((*scale, first)) });
+                            downmixes.push(Downmix {
+                                source: first + i,
+                                targets,
+                                scale: (i == 0).then_some((*scale, first)),
+                            });
                         }
                     }
                     next_state += k;
@@ -1024,15 +1170,23 @@ impl Decoder {
             }
             // X96, in the core or in asset 0: 64-band residuals, then the
             // core's subband samples added into the lower 32 bands.
-            let x96_core = in_core.iter().find(|(s, _)| *s == ext::SYNC_X96).map(|&(_, at)| &core[at..]);
-            let x96_exss = asset0.as_ref().and_then(|(f, a)| a.component(exss::mask::EXSS_X96).map(|rg| &f[rg]));
+            let x96_core = in_core
+                .iter()
+                .find(|(s, _)| *s == ext::SYNC_X96)
+                .map(|&(_, at)| &core[at..]);
+            let x96_exss = asset0
+                .as_ref()
+                .and_then(|(f, a)| a.component(exss::mask::EXSS_X96).map(|rg| &f[rg]));
             if let Some(data) = x96_exss.or(x96_core).filter(|_| en.x96) {
                 let in_exss = x96_exss.is_some();
                 let mut xr = BitReader::new(data);
                 if xr.bits(32)? != ext::SYNC_X96 {
                     return Err(Error::Invalid("X96 sync word"));
                 }
-                let mut b64: Vec<ChannelBuf> = channels.iter().map(|_| ChannelBuf::new(64, blocks)).collect();
+                let mut b64: Vec<ChannelBuf> = channels
+                    .iter()
+                    .map(|_| ChannelBuf::new(64, blocks))
+                    .collect();
                 let mut p96: Vec<adpcm::PredictorState> = channels
                     .iter()
                     .map(|c| match c.state {
@@ -1056,11 +1210,16 @@ impl Decoder {
                     for _ in 0..nsets {
                         nch.push(xr.bits(3)? as usize + 1);
                     }
-                    if header_size < 6 || header_size > data.len() || crc::crc16(&data[4..header_size]) != 0 {
+                    if header_size < 6
+                        || header_size > data.len()
+                        || crc::crc16(&data[4..header_size]) != 0
+                    {
                         return Err(Error::Invalid("X96 header CRC"));
                     }
                     if revno > 8 {
-                        return Err(Error::Unsupported(format!("X96 REVNO {revno} (above 8: ignore, 6.2.4.2)")));
+                        return Err(Error::Unsupported(format!(
+                            "X96 REVNO {revno} (above 8: ignore, 6.2.4.2)"
+                        )));
                     }
                     let (mut off, mut ch0) = (header_size, 0usize);
                     for (set, &size) in sizes.iter().enumerate() {
@@ -1096,13 +1255,24 @@ impl Decoder {
                     let _fsize96 = xr.bits(12)?;
                     let revno = xr.bits(4)?;
                     if revno > 8 {
-                        return Err(Error::Unsupported(format!("X96 REVNO {revno} (above 8: ignore, 6.2.4.2)")));
+                        return Err(Error::Unsupported(format!(
+                            "X96 REVNO {revno} (above 8: ignore, 6.2.4.2)"
+                        )));
                     }
                     let s = ext::parse_x96_set_header(&mut xr, n, revno, false)?;
                     if h.cpf {
                         let _ahcrc96 = xr.bits(16)?;
                     }
-                    ext::decode_x96_subframes(&mut xr, &s, &cc, ext_ctx, &mut b64[..n], &mut p96[..n], &mut self.noise, &mut hf_skipped)?;
+                    ext::decode_x96_subframes(
+                        &mut xr,
+                        &s,
+                        &cc,
+                        ext_ctx,
+                        &mut b64[..n],
+                        &mut p96[..n],
+                        &mut self.noise,
+                        &mut hf_skipped,
+                    )?;
                 }
                 for (c, b) in channels.iter().zip(b64.iter_mut()) {
                     for sb in 0..NSB {
@@ -1124,11 +1294,19 @@ impl Decoder {
                     Some((b64, _)) => b64
                         .iter_mut()
                         .zip(&channels)
-                        .map(|(buf, c)| ext::XbrTarget { buf, shuff: c.shuff, tmode: &c.tmode })
+                        .map(|(buf, c)| ext::XbrTarget {
+                            buf,
+                            shuff: c.shuff,
+                            tmode: &c.tmode,
+                        })
                         .collect(),
                     None => channels
                         .iter_mut()
-                        .map(|c| ext::XbrTarget { buf: &mut c.buf, shuff: c.shuff, tmode: &c.tmode })
+                        .map(|c| ext::XbrTarget {
+                            buf: &mut c.buf,
+                            shuff: c.shuff,
+                            tmode: &c.tmode,
+                        })
                         .collect(),
                 };
                 // Channel set 0 is the core's; the next ones the extension
@@ -1160,7 +1338,9 @@ impl Decoder {
         let mut sorted = spk.clone();
         sorted.sort();
         if sorted.windows(2).any(|w| w[0] == w[1]) {
-            return Err(Error::Unsupported(format!("two channels for the same speaker ({spk:?})")));
+            return Err(Error::Unsupported(format!(
+                "two channels for the same speaker ({spk:?})"
+            )));
         }
         let layout = Layout::from_speakers(&spk);
 
@@ -1254,7 +1434,10 @@ impl Decoder {
             let src: &[f64] = if *s == Speaker::LFE && h.lff > 0 {
                 &lfe_pcm
             } else {
-                let i = channels.iter().position(|c| c.speaker == *s).expect("every speaker has a channel");
+                let i = channels
+                    .iter()
+                    .position(|c| c.speaker == *s)
+                    .expect("every speaker has a channel");
                 &pcm[i]
             };
             for (i, v) in src.iter().enumerate() {
@@ -1267,7 +1450,12 @@ impl Decoder {
         info.skipped = skipped;
         debug_assert!(!info.extensions.any() || self.enabled.any());
         self.info = Some(info);
-        Ok(Frame { samples: out, sample_rate: out_rate, channels: nout, layout })
+        Ok(Frame {
+            samples: out,
+            sample_rate: out_rate,
+            channels: nout,
+            layout,
+        })
     }
 }
 

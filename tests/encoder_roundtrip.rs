@@ -13,8 +13,15 @@ use std::sync::Arc;
 /// Every core arrangement (AMODE 0, 2, 5–9), with and without the LFE.
 fn all_layouts() -> Vec<Layout> {
     use Speaker::*;
-    let cores: [&[Speaker]; 7] =
-        [&[FC], &[FL, FR], &[FC, FL, FR], &[FL, FR, BC], &[FC, FL, FR, BC], &[FL, FR, SL, SR], &[FC, FL, FR, SL, SR]];
+    let cores: [&[Speaker]; 7] = [
+        &[FC],
+        &[FL, FR],
+        &[FC, FL, FR],
+        &[FL, FR, BC],
+        &[FC, FL, FR, BC],
+        &[FL, FR, SL, SR],
+        &[FC, FL, FR, SL, SR],
+    ];
     let mut v = Vec::new();
     for c in cores {
         v.push(Layout::from_speakers(c));
@@ -27,10 +34,14 @@ fn all_layouts() -> Vec<Layout> {
 
 /// Deterministic white noise in [-1, 1).
 fn noise(seed: u64, n: usize) -> Vec<f64> {
-    let mut s = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let mut s = seed
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     (0..n)
         .map(|_| {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 11) as f64 / (1u64 << 53) as f64) * 2.0 - 1.0
         })
         .collect()
@@ -41,20 +52,35 @@ fn noise(seed: u64, n: usize) -> Vec<f64> {
 fn channel_signal(kind: usize, is_lfe: bool, rate: f64, n: usize) -> Vec<f64> {
     let t = |i: usize| i as f64 / rate;
     if is_lfe {
-        return (0..n).map(|i| 0.4 * (2.0 * PI * 40.0 * t(i)).sin() + 0.2 * (2.0 * PI * 90.0 * t(i)).sin()).collect();
+        return (0..n)
+            .map(|i| 0.4 * (2.0 * PI * 40.0 * t(i)).sin() + 0.2 * (2.0 * PI * 90.0 * t(i)).sin())
+            .collect();
     }
     match kind % 5 {
-        0 => (0..n).map(|i| 0.5 * (2.0 * PI * 440.0 * t(i)).sin()).collect(),
+        0 => (0..n)
+            .map(|i| 0.5 * (2.0 * PI * 440.0 * t(i)).sin())
+            .collect(),
         1 => (0..n)
-            .map(|i| [220.0, 1000.0, 3150.0, 7000.0].iter().map(|f| 0.12 * (2.0 * PI * f * t(i)).sin()).sum())
+            .map(|i| {
+                [220.0, 1000.0, 3150.0, 7000.0]
+                    .iter()
+                    .map(|f| 0.12 * (2.0 * PI * f * t(i)).sin())
+                    .sum()
+            })
             .collect(),
         2 => noise(kind as u64, n).iter().map(|v| 0.25 * v).collect(),
         3 => {
             // Linear chirp 100 Hz → 15 kHz over the signal.
             let dur = n as f64 / rate;
-            (0..n).map(|i| 0.3 * (2.0 * PI * (100.0 * t(i) + (14_900.0 / (2.0 * dur)) * t(i) * t(i))).sin()).collect()
+            (0..n)
+                .map(|i| {
+                    0.3 * (2.0 * PI * (100.0 * t(i) + (14_900.0 / (2.0 * dur)) * t(i) * t(i))).sin()
+                })
+                .collect()
         }
-        _ => (0..n).map(|i| 0.4 * (2.0 * PI * 1234.5 * t(i)).sin() * (2.0 * PI * 3.0 * t(i)).cos()).collect(),
+        _ => (0..n)
+            .map(|i| 0.4 * (2.0 * PI * 1234.5 * t(i)).sin() * (2.0 * PI * 3.0 * t(i)).cos())
+            .collect(),
     }
 }
 
@@ -74,13 +100,19 @@ fn encode(cfg: EncoderConfig, input: &[Vec<f64>]) -> Encoded {
     let mut chunk = 700;
     while pos < n {
         let end = (pos + chunk).min(n);
-        let inter: Vec<f32> = (pos..end).flat_map(|i| (0..channels).map(move |c| input[c][i] as f32)).collect();
+        let inter: Vec<f32> = (pos..end)
+            .flat_map(|i| (0..channels).map(move |c| input[c][i] as f32))
+            .collect();
         frames.extend(enc.encode(&inter).unwrap());
         pos = end;
         chunk = chunk * 7 % 1500 + 1;
     }
     frames.extend(enc.flush().unwrap());
-    Encoded { frames, delay: enc.delay(), frame_bytes: enc.frame_bytes() }
+    Encoded {
+        frames,
+        delay: enc.delay(),
+        frame_bytes: enc.frame_bytes(),
+    }
 }
 
 /// Decode and return per-channel PCM, checking every frame on the way.
@@ -91,10 +123,17 @@ fn decode(e: &Encoded, layout: Layout, rate: u32) -> Vec<Vec<f64>> {
 fn decode_with(mut dec: Decoder, e: &Encoded, layout: Layout, rate: u32) -> Vec<Vec<f64>> {
     let mut out = vec![Vec::new(); layout.channels()];
     for (i, f) in e.frames.iter().enumerate() {
-        assert_eq!(f.len(), e.frame_bytes, "frame {i}: rate control must hold the frame size");
+        assert_eq!(
+            f.len(),
+            e.frame_bytes,
+            "frame {i}: rate control must hold the frame size"
+        );
         assert_eq!(&f[..4], &[0x7F, 0xFE, 0x80, 0x01], "frame {i}: sync");
         assert_eq!(dts::frame_len(f).unwrap(), f.len(), "frame {i}: FSIZE + 1");
-        for d in dec.decode(f).unwrap_or_else(|err| panic!("frame {i}: {err}")) {
+        for d in dec
+            .decode(f)
+            .unwrap_or_else(|err| panic!("frame {i}: {err}"))
+        {
             assert_eq!(d.layout, layout);
             assert_eq!(d.sample_rate, rate);
             for (k, s) in d.samples.iter().enumerate() {
@@ -135,8 +174,13 @@ fn run(case: &Case, codebook: Option<Arc<AdpcmCodebook>>) -> Vec<f64> {
     cfg.adpcm_codebook = codebook;
     let e = encode(cfg, &input);
     let out = decode(&e, case.layout, case.rate);
-    assert!(out[0].len() >= n + e.delay, "decoded stream covers the input");
-    let snrs: Vec<f64> = (0..speakers.len()).map(|c| snr(&input[c], &out[c], e.delay)).collect();
+    assert!(
+        out[0].len() >= n + e.delay,
+        "decoded stream covers the input"
+    );
+    let snrs: Vec<f64> = (0..speakers.len())
+        .map(|c| snr(&input[c], &out[c], e.delay))
+        .collect();
     eprintln!(
         "{:>10} {:>5} Hz {:>8} b/s: SNR per channel {}",
         case.layout.name(),
@@ -150,8 +194,18 @@ fn run(case: &Case, codebook: Option<Arc<AdpcmCodebook>>) -> Vec<f64> {
             .join(", ")
     );
     for (s, v) in speakers.iter().zip(&snrs) {
-        let floor = if *s == dts::Speaker::LFE { 30.0 } else { case.min_snr };
-        assert!(*v >= floor, "{} {} Hz {} b/s: {s:?} SNR {v:.1} dB < {floor}", case.layout.name(), case.rate, case.bit_rate);
+        let floor = if *s == dts::Speaker::LFE {
+            30.0
+        } else {
+            case.min_snr
+        };
+        assert!(
+            *v >= floor,
+            "{} {} Hz {} b/s: {s:?} SNR {v:.1} dB < {floor}",
+            case.layout.name(),
+            case.rate,
+            case.bit_rate
+        );
     }
     snrs
 }
@@ -159,14 +213,30 @@ fn run(case: &Case, codebook: Option<Arc<AdpcmCodebook>>) -> Vec<f64> {
 #[test]
 fn every_layout_round_trips_at_48k_full_rate() {
     for layout in all_layouts() {
-        run(&Case { layout, rate: 48_000, bit_rate: 1_536_000, min_snr: 45.0 }, None);
+        run(
+            &Case {
+                layout,
+                rate: 48_000,
+                bit_rate: 1_536_000,
+                min_snr: 45.0,
+            },
+            None,
+        );
     }
 }
 
 #[test]
 fn every_layout_round_trips_at_44k1() {
     for layout in all_layouts() {
-        run(&Case { layout, rate: 44_100, bit_rate: 1_411_200, min_snr: 45.0 }, None);
+        run(
+            &Case {
+                layout,
+                rate: 44_100,
+                bit_rate: 1_411_200,
+                min_snr: 45.0,
+            },
+            None,
+        );
     }
 }
 
@@ -179,7 +249,15 @@ fn lower_rates_still_round_trip() {
         (Layout::Stereo, 32_000, 192_000, 15.0),
         (Layout::Mono, 48_000, 128_000, 15.0),
     ] {
-        run(&Case { layout, rate, bit_rate, min_snr }, None);
+        run(
+            &Case {
+                layout,
+                rate,
+                bit_rate,
+                min_snr,
+            },
+            None,
+        );
     }
 }
 
@@ -190,7 +268,10 @@ fn lower_rates_still_round_trip() {
 /// at the full rate) get past.
 #[test]
 fn default_filter_bank_is_filts_0_and_both_banks_round_trip() {
-    assert!(!EncoderConfig::default().perfect_reconstruction, "FILTS = 0 by default");
+    assert!(
+        !EncoderConfig::default().perfect_reconstruction,
+        "FILTS = 0 by default"
+    );
     let (rate, n) = (48_000u32, 48_000usize);
     for layout in [Layout::Mono, Layout::Stereo, Layout::Surround51Side] {
         let input: Vec<Vec<f64>> = layout
@@ -205,7 +286,12 @@ fn default_filter_bank_is_filts_0_and_both_banks_round_trip() {
             let e = encode(cfg, &input);
             let mut dec = Decoder::new();
             dec.decode(&e.frames[0]).unwrap();
-            assert_eq!(dec.info().unwrap().perfect_reconstruction, perfect, "{}: FILTS in the header", layout.name());
+            assert_eq!(
+                dec.info().unwrap().perfect_reconstruction,
+                perfect,
+                "{}: FILTS in the header",
+                layout.name()
+            );
             let out = decode(&e, layout, rate);
             let worst = layout
                 .speakers()
@@ -214,8 +300,17 @@ fn default_filter_bank_is_filts_0_and_both_banks_round_trip() {
                 .filter(|(_, s)| **s != dts::Speaker::LFE)
                 .map(|(c, _)| snr(&input[c], &out[c], e.delay))
                 .fold(f64::INFINITY, f64::min);
-            eprintln!("{} FILTS={}: worst SNR {worst:.1} dB", layout.name(), u8::from(perfect));
-            assert!(worst >= 45.0, "{} FILTS={}: SNR {worst:.1} dB", layout.name(), u8::from(perfect));
+            eprintln!(
+                "{} FILTS={}: worst SNR {worst:.1} dB",
+                layout.name(),
+                u8::from(perfect)
+            );
+            assert!(
+                worst >= 45.0,
+                "{} FILTS={}: SNR {worst:.1} dB",
+                layout.name(),
+                u8::from(perfect)
+            );
         }
     }
 }
@@ -239,13 +334,27 @@ fn frequency_response_is_flat() {
     for (rate, bit_rate) in [(48_000u32, 1_536_000u32), (44_100, 1_411_200)] {
         let r = rate as f64;
         let n = rate as usize;
-        let freqs: Vec<f64> = (0..26).map(|i| 50.0 * (400.0f64).powf(i as f64 / 25.0)).filter(|f| *f < 0.45 * r).collect();
+        let freqs: Vec<f64> = (0..26)
+            .map(|i| 50.0 * (400.0f64).powf(i as f64 / 25.0))
+            .filter(|f| *f < 0.45 * r)
+            .collect();
         let multitone: Vec<f64> = (0..n)
-            .map(|i| freqs.iter().enumerate().map(|(k, f)| 0.03 * (2.0 * PI * f * i as f64 / r + k as f64).sin()).sum())
+            .map(|i| {
+                freqs
+                    .iter()
+                    .enumerate()
+                    .map(|(k, f)| 0.03 * (2.0 * PI * f * i as f64 / r + k as f64).sin())
+                    .sum()
+            })
             .collect();
         let lfe_freqs = [20.0, 40.0, 60.0, 80.0, 100.0, 120.0];
         let lfe: Vec<f64> = (0..n)
-            .map(|i| lfe_freqs.iter().map(|f| 0.1 * (2.0 * PI * f * i as f64 / r).sin()).sum())
+            .map(|i| {
+                lfe_freqs
+                    .iter()
+                    .map(|f| 0.1 * (2.0 * PI * f * i as f64 / r).sin())
+                    .sum()
+            })
             .collect();
         let input = vec![multitone.clone(), multitone.clone(), lfe.clone()];
         let e = encode(EncoderConfig::new(rate, Layout::Stereo21, bit_rate), &input);
@@ -270,7 +379,10 @@ fn frequency_response_is_flat() {
             let b = tone_level(&out[2][win.start + e.delay..win.end + e.delay], f, r);
             let db = 20.0 * (b / a).log10();
             lline += &format!(" {f:.0}:{db:+.2}");
-            assert!(db.abs() <= 1.0, "{rate} Hz: LFE gain at {f} Hz is {db:+.2} dB");
+            assert!(
+                db.abs() <= 1.0,
+                "{rate} Hz: LFE gain at {f} Hz is {db:+.2} dB"
+            );
         }
         eprintln!("{rate} Hz LFE gain (Hz:dB):{lline}");
     }
@@ -286,15 +398,27 @@ fn adpcm_round_trips_with_a_shared_code_book() {
     let rate = 48_000u32;
     let n = rate as usize;
     let input: Vec<Vec<f64>> = (0..2)
-        .map(|c| (0..n).map(|i| 0.4 * (2.0 * PI * (330.0 + 500.0 * c as f64) * i as f64 / rate as f64).sin()).collect())
+        .map(|c| {
+            (0..n)
+                .map(|i| {
+                    0.4 * (2.0 * PI * (330.0 + 500.0 * c as f64) * i as f64 / rate as f64).sin()
+                })
+                .collect()
+        })
         .collect();
     for bit_rate in [384_000u32, 256_000] {
         let mut cfg = EncoderConfig::new(rate, Layout::Stereo, bit_rate);
         cfg.adpcm_codebook = Some(book.clone());
         let e = encode(cfg, &input);
         let predicted = e.frames.iter().filter(|f| has_pmode(f)).count();
-        eprintln!("ADPCM {bit_rate} b/s: {predicted} of {} frames predict at least one subband", e.frames.len());
-        assert!(predicted > e.frames.len() / 2, "a steady tone should be predicted");
+        eprintln!(
+            "ADPCM {bit_rate} b/s: {predicted} of {} frames predict at least one subband",
+            e.frames.len()
+        );
+        assert!(
+            predicted > e.frames.len() / 2,
+            "a steady tone should be predicted"
+        );
 
         // The same book on both sides: an exact decode.
         let mut dec = Decoder::new();
@@ -304,12 +428,17 @@ fn adpcm_round_trips_with_a_shared_code_book() {
         // The same signal without prediction, for comparison.
         let plain = encode(EncoderConfig::new(rate, Layout::Stereo, bit_rate), &input);
         let out_plain = decode(&plain, Layout::Stereo, rate);
-        let without: Vec<f64> = (0..2).map(|c| snr(&input[c], &out_plain[c], plain.delay)).collect();
+        let without: Vec<f64> = (0..2)
+            .map(|c| snr(&input[c], &out_plain[c], plain.delay))
+            .collect();
         // No book: refused by name.
         let mut dec = Decoder::new();
         let refused = e.frames.iter().filter(|f| matches!(dec.decode(f), Err(dts::Error::Unsupported(w)) if w.contains("D.10.1"))).count();
         // (has_pmode looks at the first channel only.)
-        assert!(refused >= predicted, "every predicted frame is refused without the book");
+        assert!(
+            refused >= predicted,
+            "every predicted frame is refused without the book"
+        );
         // No book, estimate fallback: decodes, approximately.
         let mut dec = Decoder::new();
         dec.set_adpcm_fallback(AdpcmFallback::Estimate);
@@ -324,14 +453,27 @@ fn adpcm_round_trips_with_a_shared_code_book() {
         let estimated: Vec<f64> = (0..2).map(|c| snr(&input[c], &est[c], e.delay)).collect();
         eprintln!(
             "ADPCM {bit_rate} b/s SNR: predicted+book {:.1}/{:.1} dB, unpredicted {:.1}/{:.1} dB,              predicted+estimate {:.1}/{:.1} dB ({} subband predictors estimated)",
-            with[0], with[1], without[0], without[1], estimated[0], estimated[1], dec.adpcm_estimated()
+            with[0],
+            with[1],
+            without[0],
+            without[1],
+            estimated[0],
+            estimated[1],
+            dec.adpcm_estimated()
         );
         for c in 0..2 {
             assert!(with[c] > 40.0, "decoded with the book: {:.1} dB", with[c]);
             // The estimate is concealment (see AdpcmFallback::Estimate):
             // it must decode every frame without blowing up, nothing more.
-            assert!(estimated[c] > -3.0, "estimated predictor rang: {:.1} dB", estimated[c]);
-            assert!(est[c].iter().all(|v| v.abs() < 2.0), "estimated output stays bounded");
+            assert!(
+                estimated[c] > -3.0,
+                "estimated predictor rang: {:.1} dB",
+                estimated[c]
+            );
+            assert!(
+                est[c].iter().all(|v| v.abs() < 2.0),
+                "estimated output stays bounded"
+            );
         }
     }
 }
@@ -344,7 +486,9 @@ fn has_pmode(f: &[u8]) -> bool {
     let bit = |p: usize| (f[p >> 3] >> (7 - (p & 7))) & 1;
     let bits = |p: usize, n: usize| (0..n).fold(0u32, |a, i| (a << 1) | bit(p + i) as u32);
     let pchs = bits(104 + 4, 3) as usize + 1;
-    let subs: Vec<usize> = (0..pchs).map(|c| bits(111 + 5 * c, 5) as usize + 2).collect();
+    let subs: Vec<usize> = (0..pchs)
+        .map(|c| bits(111 + 5 * c, 5) as usize + 2)
+        .collect();
     let mut p = 111 + pchs * (5 + 5 + 3 + 2 + 3 + 3);
     // SEL fields.
     let mut sel = vec![[0u32; 10]; pchs];
@@ -385,7 +529,10 @@ fn has_pmode(f: &[u8]) -> bool {
 #[test]
 fn silence_stays_silent() {
     let input = vec![vec![0.0; 10_000]; 6];
-    let e = encode(EncoderConfig::new(48_000, Layout::Surround51Side, 1_536_000), &input);
+    let e = encode(
+        EncoderConfig::new(48_000, Layout::Surround51Side, 1_536_000),
+        &input,
+    );
     let out = decode(&e, Layout::Surround51Side, 48_000);
     assert!(out.iter().flatten().all(|v| *v == 0.0));
 }

@@ -33,31 +33,219 @@ struct Sample {
 }
 
 const fn ext(xch: bool, xxch: bool, x96: bool, xbr: bool, exss: bool) -> Extensions {
-    Extensions { xch, xxch, x96, xbr, exss, xll: false, lbr: false }
+    Extensions {
+        xch,
+        xxch,
+        x96,
+        xbr,
+        exss,
+        xll: false,
+        lbr: false,
+    }
 }
 
 const NONE: Extensions = ext(false, false, false, false, false);
 
 /// `(archive path, …)`. URLs: `https://streams.videolan.org/samples/A-codecs/DTS/` + path.
 const SAMPLES: &[(&str, Sample)] = &[
-    ("dts/3-1.dts", Sample { file: "3-1.dts", sha256: "c21f1dd9a21f96ff198365b22edff20d0c35d8c8c659dd27aac34b720cfb7b9a", layout: "4.0", rate: 48_000, decoded: ext(false, false, false, false, true), skipped_xll: true }),
-    ("dts/5.1 24bit.dts", Sample { file: "5.1 24bit.dts", sha256: "3956047bd9706aa373e3d8b7c8994843374b67351d670ffbb2cd480c3f3190d6", layout: "5.1(side)", rate: 48_000, decoded: NONE, skipped_xll: false }),
-    ("dts/96-24.dts", Sample { file: "96-24.dts", sha256: "422c8db3496708dbedc67a97b8d8d2652f75e85516d7b46a58ef2df00d48df7b", layout: "5.1(side)", rate: 96_000, decoded: ext(false, false, true, false, false), skipped_xll: false }),
-    ("dts/ES 6.1 - 5.1 16bit.dts", Sample { file: "ES 6.1 - 5.1 16bit.dts", sha256: "57469d05109a39bdc48fc3af77ad873822844d4a90686e58e794f1e2237fc2d4", layout: "6.1", rate: 48_000, decoded: ext(true, false, false, false, false), skipped_xll: false }),
-    ("dts/ES 6.1 16bit.dts", Sample { file: "ES 6.1 16bit.dts", sha256: "a04708ac58c70b0da9c0bf63b24c74c4039a398eb2916de715019b1e1f809452", layout: "6.1", rate: 48_000, decoded: ext(true, false, false, false, false), skipped_xll: false }),
-    ("dts/ES 6.1 24bit.dts", Sample { file: "ES 6.1 24bit.dts", sha256: "c4017d9426d5e9dae06a3ca681cd11526e438f499a20b5f12a5c4b418d1324f3", layout: "6.1", rate: 48_000, decoded: ext(true, false, false, false, false), skipped_xll: false }),
-    ("dts/Hi-Res 5.1 24bit.dts", Sample { file: "Hi-Res 5.1 24bit.dts", sha256: "300cba0e3f2d971921678aa08d19788301d4fa97784b0796e186e554e5998d66", layout: "6.1", rate: 48_000, decoded: ext(false, true, false, true, true), skipped_xll: false }),
-    ("dts/Hi-Res 6.1 24bit.dts", Sample { file: "Hi-Res 6.1 24bit.dts", sha256: "f182cda9e008073d9f7ccf77257ff8d05665397916c0dbbe39427ca68a7058bb", layout: "6.1", rate: 48_000, decoded: ext(true, false, false, true, true), skipped_xll: false }),
-    ("dts/Master Audio 2.0 16bit.dts", Sample { file: "Master Audio 2.0 16bit.dts", sha256: "34845219924fedc4c633a97c614f464f25011857d11b6ad1919e0c02f1abb3ce", layout: "stereo", rate: 48_000, decoded: ext(false, false, false, false, true), skipped_xll: true }),
-    ("dts/Master Audio 5.0 96khz.dts", Sample { file: "Master Audio 5.0 96khz.dts", sha256: "3702d95a38cba3414968724e7bacb13440b81e79c6be753dc53c2a35813cdb39", layout: "5.0(side)", rate: 48_000, decoded: ext(false, false, false, false, true), skipped_xll: true }),
-    ("dts/Master Audio 5.1 16bit.dts", Sample { file: "Master Audio 5.1 16bit.dts", sha256: "70418af672befaa22b192798f54b864eb74eb5621fdf2a71ca358cffb114e1b0", layout: "5.1(side)", rate: 48_000, decoded: ext(false, false, false, false, true), skipped_xll: true }),
-    ("dts/Master Audio 7.1 24bit.dts", Sample { file: "Master Audio 7.1 24bit.dts", sha256: "0da506ccc59fdef1744bdbe178637199cad05207601e96fbf8d163694fe39c7e", layout: "5.1(side)", rate: 48_000, decoded: ext(false, false, false, false, true), skipped_xll: true }),
-    ("dts/Master Audio 7.1.dts", Sample { file: "Master Audio 7.1.dts", sha256: "08b6289cceedadfd2e9e7be833e60bb8afd751564cf5e6543fecbc6a3a22f8d9", layout: "5.1(side)", rate: 48_000, decoded: ext(false, false, false, false, true), skipped_xll: true }),
-    ("dts/dtswavsample14.wav", Sample { file: "dtswavsample14.wav", sha256: "f6a4889064e9f25eb873d502de8ae388d4a0b5f3776dbb5779d393f2179480e8", layout: "5.1(side)", rate: 44_100, decoded: NONE, skipped_xll: false }),
-    ("dts/open bitrate.dts", Sample { file: "open bitrate.dts", sha256: "7069220f675bd6608d37190ddf0d2de1ece570eb057da84131e2bc9a5984d720", layout: "stereo", rate: 48_000, decoded: NONE, skipped_xll: false }),
-    ("dts/padded.dts", Sample { file: "padded.dts", sha256: "b017346b8f09e3a27a599445d7367879dd2802542bd75b4ce59f0c5e3a5a9c12", layout: "5.1(side)", rate: 48_000, decoded: NONE, skipped_xll: false }),
-    ("lotr_5.1_768.dts", Sample { file: "lotr_5.1_768.dts", sha256: "6c70137c8d4383668c034bd4993ba7e9cb10044a2165a35fe78bf2316388d8d8", layout: "6.1", rate: 48_000, decoded: ext(true, false, false, false, false), skipped_xll: false }),
-    ("scissorhands-4.0-48_24.dts", Sample { file: "scissorhands-4.0-48_24.dts", sha256: "46c6d087c5e33ca6263c87c2aa752f6167db04f2292075a0831ff9d2264c3150", layout: "4.0", rate: 48_000, decoded: NONE, skipped_xll: false }),
+    (
+        "dts/3-1.dts",
+        Sample {
+            file: "3-1.dts",
+            sha256: "c21f1dd9a21f96ff198365b22edff20d0c35d8c8c659dd27aac34b720cfb7b9a",
+            layout: "4.0",
+            rate: 48_000,
+            decoded: ext(false, false, false, false, true),
+            skipped_xll: true,
+        },
+    ),
+    (
+        "dts/5.1 24bit.dts",
+        Sample {
+            file: "5.1 24bit.dts",
+            sha256: "3956047bd9706aa373e3d8b7c8994843374b67351d670ffbb2cd480c3f3190d6",
+            layout: "5.1(side)",
+            rate: 48_000,
+            decoded: NONE,
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/96-24.dts",
+        Sample {
+            file: "96-24.dts",
+            sha256: "422c8db3496708dbedc67a97b8d8d2652f75e85516d7b46a58ef2df00d48df7b",
+            layout: "5.1(side)",
+            rate: 96_000,
+            decoded: ext(false, false, true, false, false),
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/ES 6.1 - 5.1 16bit.dts",
+        Sample {
+            file: "ES 6.1 - 5.1 16bit.dts",
+            sha256: "57469d05109a39bdc48fc3af77ad873822844d4a90686e58e794f1e2237fc2d4",
+            layout: "6.1",
+            rate: 48_000,
+            decoded: ext(true, false, false, false, false),
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/ES 6.1 16bit.dts",
+        Sample {
+            file: "ES 6.1 16bit.dts",
+            sha256: "a04708ac58c70b0da9c0bf63b24c74c4039a398eb2916de715019b1e1f809452",
+            layout: "6.1",
+            rate: 48_000,
+            decoded: ext(true, false, false, false, false),
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/ES 6.1 24bit.dts",
+        Sample {
+            file: "ES 6.1 24bit.dts",
+            sha256: "c4017d9426d5e9dae06a3ca681cd11526e438f499a20b5f12a5c4b418d1324f3",
+            layout: "6.1",
+            rate: 48_000,
+            decoded: ext(true, false, false, false, false),
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/Hi-Res 5.1 24bit.dts",
+        Sample {
+            file: "Hi-Res 5.1 24bit.dts",
+            sha256: "300cba0e3f2d971921678aa08d19788301d4fa97784b0796e186e554e5998d66",
+            layout: "6.1",
+            rate: 48_000,
+            decoded: ext(false, true, false, true, true),
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/Hi-Res 6.1 24bit.dts",
+        Sample {
+            file: "Hi-Res 6.1 24bit.dts",
+            sha256: "f182cda9e008073d9f7ccf77257ff8d05665397916c0dbbe39427ca68a7058bb",
+            layout: "6.1",
+            rate: 48_000,
+            decoded: ext(true, false, false, true, true),
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/Master Audio 2.0 16bit.dts",
+        Sample {
+            file: "Master Audio 2.0 16bit.dts",
+            sha256: "34845219924fedc4c633a97c614f464f25011857d11b6ad1919e0c02f1abb3ce",
+            layout: "stereo",
+            rate: 48_000,
+            decoded: ext(false, false, false, false, true),
+            skipped_xll: true,
+        },
+    ),
+    (
+        "dts/Master Audio 5.0 96khz.dts",
+        Sample {
+            file: "Master Audio 5.0 96khz.dts",
+            sha256: "3702d95a38cba3414968724e7bacb13440b81e79c6be753dc53c2a35813cdb39",
+            layout: "5.0(side)",
+            rate: 48_000,
+            decoded: ext(false, false, false, false, true),
+            skipped_xll: true,
+        },
+    ),
+    (
+        "dts/Master Audio 5.1 16bit.dts",
+        Sample {
+            file: "Master Audio 5.1 16bit.dts",
+            sha256: "70418af672befaa22b192798f54b864eb74eb5621fdf2a71ca358cffb114e1b0",
+            layout: "5.1(side)",
+            rate: 48_000,
+            decoded: ext(false, false, false, false, true),
+            skipped_xll: true,
+        },
+    ),
+    (
+        "dts/Master Audio 7.1 24bit.dts",
+        Sample {
+            file: "Master Audio 7.1 24bit.dts",
+            sha256: "0da506ccc59fdef1744bdbe178637199cad05207601e96fbf8d163694fe39c7e",
+            layout: "5.1(side)",
+            rate: 48_000,
+            decoded: ext(false, false, false, false, true),
+            skipped_xll: true,
+        },
+    ),
+    (
+        "dts/Master Audio 7.1.dts",
+        Sample {
+            file: "Master Audio 7.1.dts",
+            sha256: "08b6289cceedadfd2e9e7be833e60bb8afd751564cf5e6543fecbc6a3a22f8d9",
+            layout: "5.1(side)",
+            rate: 48_000,
+            decoded: ext(false, false, false, false, true),
+            skipped_xll: true,
+        },
+    ),
+    (
+        "dts/dtswavsample14.wav",
+        Sample {
+            file: "dtswavsample14.wav",
+            sha256: "f6a4889064e9f25eb873d502de8ae388d4a0b5f3776dbb5779d393f2179480e8",
+            layout: "5.1(side)",
+            rate: 44_100,
+            decoded: NONE,
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/open bitrate.dts",
+        Sample {
+            file: "open bitrate.dts",
+            sha256: "7069220f675bd6608d37190ddf0d2de1ece570eb057da84131e2bc9a5984d720",
+            layout: "stereo",
+            rate: 48_000,
+            decoded: NONE,
+            skipped_xll: false,
+        },
+    ),
+    (
+        "dts/padded.dts",
+        Sample {
+            file: "padded.dts",
+            sha256: "b017346b8f09e3a27a599445d7367879dd2802542bd75b4ce59f0c5e3a5a9c12",
+            layout: "5.1(side)",
+            rate: 48_000,
+            decoded: NONE,
+            skipped_xll: false,
+        },
+    ),
+    (
+        "lotr_5.1_768.dts",
+        Sample {
+            file: "lotr_5.1_768.dts",
+            sha256: "6c70137c8d4383668c034bd4993ba7e9cb10044a2165a35fe78bf2316388d8d8",
+            layout: "6.1",
+            rate: 48_000,
+            decoded: ext(true, false, false, false, false),
+            skipped_xll: false,
+        },
+    ),
+    (
+        "scissorhands-4.0-48_24.dts",
+        Sample {
+            file: "scissorhands-4.0-48_24.dts",
+            sha256: "46c6d087c5e33ca6263c87c2aa752f6167db04f2292075a0831ff9d2264c3150",
+            layout: "4.0",
+            rate: 48_000,
+            decoded: NONE,
+            skipped_xll: false,
+        },
+    ),
 ];
 
 fn samples_dir() -> Option<PathBuf> {
@@ -75,13 +263,21 @@ fn load(s: &Sample) -> Option<Vec<u8>> {
     let raw = match std::fs::read(&path) {
         Ok(b) => b,
         Err(e) => {
-            assert!(std::env::var_os("DTS_REQUIRE_SAMPLES").is_none(), "{}: {e}", path.display());
+            assert!(
+                std::env::var_os("DTS_REQUIRE_SAMPLES").is_none(),
+                "{}: {e}",
+                path.display()
+            );
             eprintln!("{}: not present, skipped", s.file);
             return None;
         }
     };
     assert_eq!(hex(&sha256(&raw)), s.sha256, "{}: SHA-256", s.file);
-    Some(dts::normalize_framing(&raw).expect("a DTS stream").into_owned())
+    Some(
+        dts::normalize_framing(&raw)
+            .expect("a DTS stream")
+            .into_owned(),
+    )
 }
 
 /// Split into packets and decode each; `Err` per packet kept.
@@ -171,7 +367,10 @@ fn public_streams_decode_completely_with_the_estimate() {
         let want = s.decoded;
         let got = info.extensions;
         assert!(
-            (!want.xch || got.xch) && (!want.xxch || got.xxch) && (!want.x96 || got.x96) && (!want.xbr || got.xbr)
+            (!want.xch || got.xch)
+                && (!want.xxch || got.xxch)
+                && (!want.x96 || got.x96)
+                && (!want.xbr || got.xbr)
                 && (!want.exss || got.exss),
             "{}: decoded extensions {got:?}, want {want:?}",
             s.file
@@ -181,14 +380,27 @@ fn public_streams_decode_completely_with_the_estimate() {
         let mut line = String::new();
         for (c, spk) in info.layout.speakers().iter().enumerate() {
             let x = &pcm[c];
-            assert!(x.iter().all(|v| v.is_finite()), "{}: non-finite output", s.file);
+            assert!(
+                x.iter().all(|v| v.is_finite()),
+                "{}: non-finite output",
+                s.file
+            );
             let peak = x.iter().fold(0f32, |a, v| a.max(v.abs()));
             let rms = (x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / x.len() as f64).sqrt();
             assert!(peak <= 1.0, "{}: {spk:?} peaks at {peak}", s.file);
-            line += &format!(" {spk:?} {:.1}/{:.1}", 20.0 * rms.max(1e-12).log10(), 20.0 * (peak as f64).max(1e-12).log10());
+            line += &format!(
+                " {spk:?} {:.1}/{:.1}",
+                20.0 * rms.max(1e-12).log10(),
+                20.0 * (peak as f64).max(1e-12).log10()
+            );
         }
-        let total_rms =
-            (pcm.iter().flatten().map(|v| (*v as f64).powi(2)).sum::<f64>() / pcm.iter().map(Vec::len).sum::<usize>() as f64).sqrt();
+        let total_rms = (pcm
+            .iter()
+            .flatten()
+            .map(|v| (*v as f64).powi(2))
+            .sum::<f64>()
+            / pcm.iter().map(Vec::len).sum::<usize>() as f64)
+            .sqrt();
         assert!(total_rms > 1e-4, "{}: decodes to near-silence", s.file);
         eprintln!(
             "{:>28}: {} frames, {} at {} Hz, {} subband predictors estimated; RMS/peak dBFS:{line}",
@@ -211,14 +423,27 @@ fn xch_is_consistent_with_its_core() {
         let take = |ext| {
             let mut d = decoder(AdpcmFallback::Estimate, ext);
             let r = decode_all(&bytes[..bytes.len().min(4_000_000)], &mut d);
-            planar(&r.into_iter().filter_map(Result::ok).flatten().collect::<Vec<_>>())
+            planar(
+                &r.into_iter()
+                    .filter_map(Result::ok)
+                    .flatten()
+                    .collect::<Vec<_>>(),
+            )
         };
-        let full = take(Extensions { xbr: false, ..Extensions::ALL });
+        let full = take(Extensions {
+            xbr: false,
+            ..Extensions::ALL
+        });
         let core = take(Extensions::NONE);
         // 6.1 = FL FR FC LFE BC SL SR; 5.1(side) = FL FR FC LFE SL SR.
         let n = full[0].len().min(core[0].len());
         for c in 0..4 {
-            assert_eq!(&full[c][..n], &core[c][..n], "{}: channel {c} changed by XCh", s.file);
+            assert_eq!(
+                &full[c][..n],
+                &core[c][..n],
+                "{}: channel {c} changed by XCh",
+                s.file
+            );
         }
         let (mut err, mut sig, mut bc) = (0f64, 0f64, 0f64);
         for (fs, cs) in [(5, 4), (6, 5)] {
@@ -245,9 +470,20 @@ fn xbr_is_a_small_correction() {
     for (_, s) in SAMPLES.iter().filter(|(_, s)| s.decoded.xbr) {
         let Some(bytes) = load(s) else { continue };
         let take = |xbr| {
-            let mut d = decoder(AdpcmFallback::Estimate, Extensions { xbr, ..Extensions::ALL });
+            let mut d = decoder(
+                AdpcmFallback::Estimate,
+                Extensions {
+                    xbr,
+                    ..Extensions::ALL
+                },
+            );
             let r = decode_all(&bytes[..bytes.len().min(4_000_000)], &mut d);
-            planar(&r.into_iter().filter_map(Result::ok).flatten().collect::<Vec<_>>())
+            planar(
+                &r.into_iter()
+                    .filter_map(Result::ok)
+                    .flatten()
+                    .collect::<Vec<_>>(),
+            )
         };
         let (with, without) = (take(true), take(false));
         let (mut d, mut sig) = (0f64, 0f64);
@@ -258,8 +494,15 @@ fn xbr_is_a_small_correction() {
             }
         }
         let rel = 10.0 * (d / sig.max(1e-30)).log10();
-        eprintln!("{:>28}: XBR correction at {rel:.1} dB of the signal", s.file);
-        assert!(rel < -10.0 && rel > -120.0, "{}: XBR correction {rel:.1} dB", s.file);
+        eprintln!(
+            "{:>28}: XBR correction at {rel:.1} dB of the signal",
+            s.file
+        );
+        assert!(
+            rel < -10.0 && rel > -120.0,
+            "{}: XBR correction {rel:.1} dB",
+            s.file
+        );
     }
 }
 
@@ -273,9 +516,20 @@ fn x96_keeps_the_core_band() {
     for (_, s) in SAMPLES.iter().filter(|(_, s)| s.decoded.x96) {
         let Some(bytes) = load(s) else { continue };
         let take = |x96| {
-            let mut d = decoder(AdpcmFallback::Estimate, Extensions { x96, ..Extensions::ALL });
+            let mut d = decoder(
+                AdpcmFallback::Estimate,
+                Extensions {
+                    x96,
+                    ..Extensions::ALL
+                },
+            );
             let r = decode_all(&bytes[..bytes.len().min(600_000)], &mut d);
-            planar(&r.into_iter().filter_map(Result::ok).flatten().collect::<Vec<_>>())
+            planar(
+                &r.into_iter()
+                    .filter_map(Result::ok)
+                    .flatten()
+                    .collect::<Vec<_>>(),
+            )
         };
         let (hi, lo) = (take(true), take(false));
         for c in 0..hi.len() {
@@ -287,7 +541,11 @@ fn x96_keeps_the_core_band() {
                     .filter(|m| *m >= 0 && (*m as usize) < y48.len())
                     .map(|m| {
                         let d = t - m as f64;
-                        let sinc = if d.abs() < 1e-12 { 1.0 } else { (PI * d).sin() / (PI * d) };
+                        let sinc = if d.abs() < 1e-12 {
+                            1.0
+                        } else {
+                            (PI * d).sin() / (PI * d)
+                        };
                         y48[m as usize] as f64 * sinc * (0.5 + 0.5 * (PI * d / 65.0).cos())
                     })
                     .sum::<f64>()
@@ -300,8 +558,15 @@ fn x96_keeps_the_core_band() {
                 sig += want * want;
             }
             let snr = 10.0 * (sig / err.max(1e-30)).log10();
-            eprintln!("{:>28}: ch{c}: 96 kHz output vs interpolated core output: {snr:.1} dB apart", s.file);
-            assert!(snr > 30.0, "{}: ch{c}: X96 output departs from the core band ({snr:.1} dB)", s.file);
+            eprintln!(
+                "{:>28}: ch{c}: 96 kHz output vs interpolated core output: {snr:.1} dB apart",
+                s.file
+            );
+            assert!(
+                snr > 30.0,
+                "{}: ch{c}: X96 output departs from the core band ({snr:.1} dB)",
+                s.file
+            );
         }
     }
 }
@@ -312,6 +577,7 @@ fn hex(b: &[u8]) -> String {
 
 /// SHA-256 (FIPS 180-4), for checking the downloaded streams.
 fn sha256(data: &[u8]) -> [u8; 32] {
+    #[rustfmt::skip]
     const K: [u32; 64] = [
         0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98,
         0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
@@ -322,8 +588,10 @@ fn sha256(data: &[u8]) -> [u8; 32] {
         0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
         0xc67178f2,
     ];
-    let mut h: [u32; 8] =
-        [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+    let mut h: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
     let mut msg = data.to_vec();
     let bitlen = (data.len() as u64) * 8;
     msg.push(0x80);
@@ -334,22 +602,43 @@ fn sha256(data: &[u8]) -> [u8; 32] {
     for block in msg.as_chunks::<64>().0 {
         let mut w = [0u32; 64];
         for i in 0..16 {
-            w[i] = u32::from_be_bytes([block[4 * i], block[4 * i + 1], block[4 * i + 2], block[4 * i + 3]]);
+            w[i] = u32::from_be_bytes([
+                block[4 * i],
+                block[4 * i + 1],
+                block[4 * i + 2],
+                block[4 * i + 3],
+            ]);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
             let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
         let mut v = h;
         for i in 0..64 {
             let s1 = v[4].rotate_right(6) ^ v[4].rotate_right(11) ^ v[4].rotate_right(25);
             let ch = (v[4] & v[5]) ^ (!v[4] & v[6]);
-            let t1 = v[7].wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+            let t1 = v[7]
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[i])
+                .wrapping_add(w[i]);
             let s0 = v[0].rotate_right(2) ^ v[0].rotate_right(13) ^ v[0].rotate_right(22);
             let maj = (v[0] & v[1]) ^ (v[0] & v[2]) ^ (v[1] & v[2]);
             let t2 = s0.wrapping_add(maj);
-            v = [t1.wrapping_add(t2), v[0], v[1], v[2], v[3].wrapping_add(t1), v[4], v[5], v[6]];
+            v = [
+                t1.wrapping_add(t2),
+                v[0],
+                v[1],
+                v[2],
+                v[3].wrapping_add(t1),
+                v[4],
+                v[5],
+                v[6],
+            ];
         }
         for (a, b) in h.iter_mut().zip(v) {
             *a = a.wrapping_add(b);
@@ -364,10 +653,19 @@ fn sha256(data: &[u8]) -> [u8; 32] {
 
 #[test]
 fn sha256_known_answers() {
-    assert_eq!(hex(&sha256(b"")), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-    assert_eq!(hex(&sha256(b"abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    assert_eq!(
+        hex(&sha256(b"")),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+    assert_eq!(
+        hex(&sha256(b"abc")),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
     let long = b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
-    assert_eq!(hex(&sha256(long)), "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+    assert_eq!(
+        hex(&sha256(long)),
+        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"
+    );
 }
 
 /// The archive URLs, for the fetch script and anyone checking provenance.

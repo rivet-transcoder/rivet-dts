@@ -54,7 +54,11 @@ pub(crate) struct PredictorState {
 
 impl PredictorState {
     pub fn new(bands: usize) -> Self {
-        Self { carry: vec![[0.0; HIST]; bands], use_carry: false, estimated: 0 }
+        Self {
+            carry: vec![[0.0; HIST]; bands],
+            use_carry: false,
+            estimated: 0,
+        }
     }
 
     /// Start a frame: `hflag` says whether the previous frame's history is
@@ -99,8 +103,12 @@ impl PredictorState {
     /// Reconstructs in place and returns the predictor used.
     pub fn estimate_subframe(&mut self, sb: usize, frame: &mut [f64], t0: usize) -> [f64; ORDER] {
         self.estimated += 1;
-        let hist: Vec<f64> = (t0 as isize - HIST as isize..t0 as isize).map(|k| self.at(sb, frame, k)).collect();
-        let c = covariance_lpc(&hist).filter(stable).unwrap_or_else(|| lpc(&hist, 1.0));
+        let hist: Vec<f64> = (t0 as isize - HIST as isize..t0 as isize)
+            .map(|k| self.at(sb, frame, k))
+            .collect();
+        let c = covariance_lpc(&hist)
+            .filter(stable)
+            .unwrap_or_else(|| lpc(&hist, 1.0));
         let residual: Vec<f64> = frame[t0..].to_vec();
         self.inverse(sb, &c, frame, t0);
         // A mismatched predictor on a tonal subband can ring far above the
@@ -279,7 +287,9 @@ mod tests {
         st.begin_frame(true);
         st.end_frame(&prev);
         st.begin_frame(true);
-        let residual: Vec<f64> = (0..16).map(|i| ((i * 37 % 11) as f64 - 5.0) * 0.1).collect();
+        let residual: Vec<f64> = (0..16)
+            .map(|i| ((i * 37 % 11) as f64 - 5.0) * 0.1)
+            .collect();
         let mut frame = residual.clone();
         // Two subsubframes, predicted one after the other.
         st.inverse(3, &c, &mut frame[..8], 0);
@@ -294,7 +304,12 @@ mod tests {
         let mut frame = residual.clone();
         st2.inverse(3, &c, &mut frame[..8], 0);
         let want = reference(&residual[..8], &[0.0; 4], &c);
-        assert!(frame[..8].iter().zip(&want).all(|(a, b)| (a - b).abs() < 1e-12));
+        assert!(
+            frame[..8]
+                .iter()
+                .zip(&want)
+                .all(|(a, b)| (a - b).abs() < 1e-12)
+        );
     }
 
     #[test]

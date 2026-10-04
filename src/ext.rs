@@ -4,13 +4,13 @@
 //! extension substream asset, and decoded here into subband samples that
 //! join the core's before synthesis.
 
+use super::Error;
 use super::adpcm::{AdpcmFallback, PredictorState};
 use super::bits::BitReader;
 use super::core::{self, AudioCtx, ChannelBuf, CodingParams, MAX_SET, NSB};
 use super::crc::crc16;
 use super::huffman::{self, Codebook};
 use super::tables;
-use super::Error;
 
 /// XCh sync word (Table 6-17).
 pub(crate) const SYNC_XCH: u32 = 0x5A5A_5A5A;
@@ -34,7 +34,11 @@ pub(crate) struct CoreFrameCtx {
 
 impl CoreFrameCtx {
     fn step_table(&self) -> &'static [u32; 27] {
-        if self.lossless_steps { &tables::STEP_SIZE_LOSSLESS_Q22 } else { &tables::STEP_SIZE_LOSSY_Q22 }
+        if self.lossless_steps {
+            &tables::STEP_SIZE_LOSSLESS_Q22
+        } else {
+            &tables::STEP_SIZE_LOSSY_Q22
+        }
     }
 }
 
@@ -87,7 +91,11 @@ pub(crate) fn decode_set_subframes(
 
 /// The XCh frame header and audio header (Tables 6-17, 6-18), from the
 /// sync word: `(XChFSIZE, channel count, coding params)`.
-pub(crate) fn parse_xch_header(r: &mut BitReader, cpf: bool, lower_subs: &[usize]) -> Result<(usize, CodingParams), Error> {
+pub(crate) fn parse_xch_header(
+    r: &mut BitReader,
+    cpf: bool,
+    lower_subs: &[usize],
+) -> Result<(usize, CodingParams), Error> {
     if r.bits(32)? != SYNC_XCH {
         return Err(Error::Invalid("XCh sync word"));
     }
@@ -155,7 +163,12 @@ pub(crate) fn parse_xxch_header(data: &[u8]) -> Result<XxchHeader, Error> {
         sets.push((off, off + s));
         off += s;
     }
-    Ok(XxchHeader { core_mask, bits4mask, crc_chset, sets })
+    Ok(XxchHeader {
+        core_mask,
+        bits4mask,
+        crc_chset,
+        sets,
+    })
 }
 
 /// C.6-style coefficient code (6 bits): 0 → 0, else `DmixTable[(code − 1) << 2]`.
@@ -225,9 +238,18 @@ pub(crate) fn parse_xxch_set_header(
     }
     let channel_bits: Vec<u32> = (0..32).filter(|b| (layout_mask >> b) & 1 == 1).collect();
     if channel_bits.len() != n {
-        return Err(Error::Invalid("XXCH speaker mask disagrees with the channel count"));
+        return Err(Error::Invalid(
+            "XXCH speaker mask disagrees with the channel count",
+        ));
     }
-    Ok((XxchSet { params, channel_bits, downmix }, header_size))
+    Ok((
+        XxchSet {
+            params,
+            channel_bits,
+            downmix,
+        },
+        header_size,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +270,12 @@ pub(crate) struct X96Set {
     pub sel: [[u32; 15]; MAX_SET],
 }
 
-pub(crate) fn parse_x96_set_header(r: &mut BitReader, n: usize, revno: u32, exss: bool) -> Result<X96Set, Error> {
+pub(crate) fn parse_x96_set_header(
+    r: &mut BitReader,
+    n: usize,
+    revno: u32,
+    exss: bool,
+) -> Result<X96Set, Error> {
     if n == 0 || n > MAX_SET {
         return Err(Error::Invalid("X96 channel count"));
     }
@@ -281,7 +308,9 @@ pub(crate) fn parse_x96_set_header(r: &mut BitReader, n: usize, revno: u32, exss
     for ch in 0..n {
         s.joinx[ch] = r.bits(3)? as usize;
         if s.joinx[ch] > ch {
-            return Err(Error::Invalid("JOINX96 source channel is not a lower channel"));
+            return Err(Error::Invalid(
+                "JOINX96 source channel is not a lower channel",
+            ));
         }
     }
     for ch in 0..n {
@@ -409,7 +438,9 @@ pub(crate) fn decode_x96_subframes(
                 let idx = if shuff == 5 {
                     r.bits(6)? as i32
                 } else {
-                    acc += huffman::scale_book(shuff).expect("SHUFF96 < 5 has a book").decode(r)?;
+                    acc += huffman::scale_book(shuff)
+                        .expect("SHUFF96 < 5 has a book")
+                        .decode(r)?;
                     acc
                 };
                 scales[ch][sb] = usize::try_from(idx)
@@ -435,7 +466,9 @@ pub(crate) fn decode_x96_subframes(
                     let raw = match join_shuff[ch] {
                         5 => r.bits(6)? as i32,
                         6 => r.bits(7)? as i32,
-                        _ => book.ok_or(Error::Invalid("JOIN_SHUFF96 without a code book"))?.decode(r)?,
+                        _ => book
+                            .ok_or(Error::Invalid("JOIN_SHUFF96 without a code book"))?
+                            .decode(r)?,
                     };
                     join_scales[ch][sb] = usize::try_from(raw + 64)
                         .ok()
@@ -490,7 +523,8 @@ pub(crate) fn decode_x96_subframes(
                     }
                     let core_abits = a - 1;
                     let sel = s.sel[ch].get(core_abits as usize - 1).copied().unwrap_or(0);
-                    let coding = huffman::sample_coding(core_abits, if core_abits <= 10 { sel } else { 0 })?;
+                    let coding =
+                        huffman::sample_coding(core_abits, if core_abits <= 10 { sel } else { 0 })?;
                     core::read_indices(r, coding, &mut q)?;
                     let step = step_table[core_abits as usize] as f64 / (1u32 << 22) as f64;
                     let scale = step * scales[ch][sb];
@@ -559,7 +593,11 @@ pub(crate) struct XbrTarget<'a> {
 
 /// The XBR frame (Tables 6-12 … 6-16), adding its residuals into the
 /// channel sets' subband samples: `targets[set]` are the set's channels.
-pub(crate) fn decode_xbr(data: &[u8], cc: &CoreFrameCtx, targets: &mut [Vec<XbrTarget>]) -> Result<(), Error> {
+pub(crate) fn decode_xbr(
+    data: &[u8],
+    cc: &CoreFrameCtx,
+    targets: &mut [Vec<XbrTarget>],
+) -> Result<(), Error> {
     let mut r = BitReader::new(data);
     if r.bits(32)? != SYNC_XBR {
         return Err(Error::Invalid("XBR sync word"));
@@ -596,7 +634,9 @@ pub(crate) fn decode_xbr(data: &[u8], cc: &CoreFrameCtx, targets: &mut [Vec<XbrT
         };
         let bands = &active[set];
         if bands.len() > target.len() {
-            return Err(Error::Invalid("XBR channel set larger than the channels it extends"));
+            return Err(Error::Invalid(
+                "XBR channel set larger than the channels it extends",
+            ));
         }
         let mut r = BitReader::new(&data[off..end]);
         let mut t0 = 0;
@@ -634,7 +674,8 @@ pub(crate) fn decode_xbr(data: &[u8], cc: &CoreFrameCtx, targets: &mut [Vec<XbrT
                             } else {
                                 tables::SCALE_RMS_6BIT.get(i).copied()
                             };
-                            v.map(|v| v as f64).ok_or(Error::Invalid("XBR scale index outside the table"))
+                            v.map(|v| v as f64)
+                                .ok_or(Error::Invalid("XBR scale index outside the table"))
                         };
                         pair[0] = look(r.bits(scale_bits[ch])? as usize)?;
                         let tm = target[ch].tmode.get(sf).map_or(0, |t| t[sb.min(NSB - 1)]);
@@ -667,10 +708,21 @@ pub(crate) fn decode_xbr(data: &[u8], cc: &CoreFrameCtx, targets: &mut [Vec<XbrT
                         } else {
                             continue;
                         }
-                        let step = *step_table.get(a).ok_or(Error::Invalid("XBR ABITS above 26"))? as f64
+                        let step = *step_table
+                            .get(a)
+                            .ok_or(Error::Invalid("XBR ABITS above 26"))?
+                            as f64
                             / (1u32 << 22) as f64;
-                        let tm = if tmode_flag { target[ch].tmode.get(sf).map_or(0, |t| t[sb.min(NSB - 1)]) } else { 0 };
-                        let sf_ = if tm == 0 || ssf < tm as usize { scales[ch][sb][0] } else { scales[ch][sb][1] };
+                        let tm = if tmode_flag {
+                            target[ch].tmode.get(sf).map_or(0, |t| t[sb.min(NSB - 1)])
+                        } else {
+                            0
+                        };
+                        let sf_ = if tm == 0 || ssf < tm as usize {
+                            scales[ch][sb][0]
+                        } else {
+                            scales[ch][sb][1]
+                        };
                         let t = t0 + 8 * ssf;
                         if sb < target[ch].buf.s.len() && t + 8 <= blocks {
                             for (m, v) in q.iter().enumerate() {

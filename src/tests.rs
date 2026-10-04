@@ -6,8 +6,19 @@ use super::*;
 
 /// A synthetic bit-stream header (Table 5-1 fields only), for the refusals
 /// that trigger before any audio is parsed.
-fn header(ftype: u32, nblks: u32, fsize: u32, amode: u32, sfreq: u32, lff: u32, vernum: u32) -> Vec<u8> {
-    pack(&header_bits(ftype, nblks, fsize, amode, sfreq, lff, vernum), fsize)
+fn header(
+    ftype: u32,
+    nblks: u32,
+    fsize: u32,
+    amode: u32,
+    sfreq: u32,
+    lff: u32,
+    vernum: u32,
+) -> Vec<u8> {
+    pack(
+        &header_bits(ftype, nblks, fsize, amode, sfreq, lff, vernum),
+        fsize,
+    )
 }
 
 fn pack(bits: &[u8], fsize: u32) -> Vec<u8> {
@@ -20,7 +31,15 @@ fn pack(bits: &[u8], fsize: u32) -> Vec<u8> {
 }
 
 /// The Table 5-1 header followed by `SUBFS` = 0 and `PCHS`, as bits.
-fn header_bits(ftype: u32, nblks: u32, fsize: u32, amode: u32, sfreq: u32, lff: u32, vernum: u32) -> Vec<u8> {
+fn header_bits(
+    ftype: u32,
+    nblks: u32,
+    fsize: u32,
+    amode: u32,
+    sfreq: u32,
+    lff: u32,
+    vernum: u32,
+) -> Vec<u8> {
     let mut bits: Vec<u8> = Vec::new();
     let mut push = |v: u32, n: usize| {
         for i in (0..n).rev() {
@@ -63,7 +82,10 @@ fn frame_with_adpcm() -> Vec<u8> {
     let mut bits = header_bits(1, 15, 2047, 9, 13, 2, 7);
     // SUBS 5×5, VQSUB 5×5, JOINX 5×3, THUFF 5×2, SHUFF 5×3, BHUFF 5×3, SEL
     // 5×(1 + 4×2 + 5×3), ADJ 5×(2 + 4×2 + 5×2), then SSC 2 + PSC 3.
-    bits.extend(std::iter::repeat_n(0, 25 + 25 + 15 + 10 + 15 + 15 + 120 + 100 + 5));
+    bits.extend(std::iter::repeat_n(
+        0,
+        25 + 25 + 15 + 10 + 15 + 15 + 120 + 100 + 5,
+    ));
     bits.push(1); // PMODE[0][0]
     bits.extend(std::iter::repeat_n(0, 9 + 12)); // the other PMODEs, PVQ[0][0]
     pack(&bits, 2047)
@@ -74,7 +96,11 @@ fn adpcm_prediction_is_refused_by_name() {
     let mut d = Decoder::new();
     let err = d.decode(&frame_with_adpcm()).unwrap_err();
     assert!(matches!(err, Error::Unsupported(_)), "{err}");
-    assert!(err.to_string().contains("ADPCM prediction (PMODE = 1 in 1 subbands)"), "{err}");
+    assert!(
+        err.to_string()
+            .contains("ADPCM prediction (PMODE = 1 in 1 subbands)"),
+        "{err}"
+    );
     assert!(err.to_string().contains("D.10.1"), "{err}");
 }
 
@@ -119,7 +145,12 @@ fn arrangements_without_defined_speakers_are_refused_by_name() {
     let err = d.decode(&f).unwrap_err();
     assert!(matches!(err, Error::Unsupported(_)), "{err}");
     assert!(err.to_string().contains("AMODE 10"), "{err}");
-    assert!(core_speakers(33).unwrap_err().to_string().contains("user-defined"));
+    assert!(
+        core_speakers(33)
+            .unwrap_err()
+            .to_string()
+            .contains("user-defined")
+    );
 }
 
 #[test]
@@ -143,14 +174,22 @@ fn every_core_arrangement_maps_onto_canonical_order() {
     for amode in 0..10 {
         for lfe in [false, true] {
             let l = layout(amode, lfe);
-            assert_eq!(l.channels(), AMODE_CHANNELS[amode as usize] + lfe as usize, "AMODE {amode}");
+            assert_eq!(
+                l.channels(),
+                AMODE_CHANNELS[amode as usize] + lfe as usize,
+                "AMODE {amode}"
+            );
         }
     }
 }
 
 #[test]
 fn sum_difference_pairs_follow_amode_channel_order() {
-    assert_eq!(sum_diff_pairs(9), (Some((1, 2)), Some((3, 4))), "C L R SL SR");
+    assert_eq!(
+        sum_diff_pairs(9),
+        (Some((1, 2)), Some((3, 4))),
+        "C L R SL SR"
+    );
     assert_eq!(sum_diff_pairs(2), (Some((0, 1)), None), "L R");
     assert_eq!(sum_diff_pairs(0), (None, None));
 }
@@ -173,8 +212,9 @@ fn a_refused_frame_still_reports_its_layout() {
 /// silent and the decoder says so.
 #[test]
 fn hf_vq_subbands_use_a_supplied_book() {
-    let entries: Vec<[i8; vq::HF_VQ_LEN]> =
-        (0..vq::HF_VQ_VECTORS).map(|v| std::array::from_fn(|m| (((v * 3 + m * 5) % 200) as i32 - 100) as i8)).collect();
+    let entries: Vec<[i8; vq::HF_VQ_LEN]> = (0..vq::HF_VQ_VECTORS)
+        .map(|v| std::array::from_fn(|m| (((v * 3 + m * 5) % 200) as i32 - 100) as i8))
+        .collect();
     let book = HfVqCodebook::from_entries(&entries).unwrap();
     // One channel: SUBS 4, VQSUB 2 → subbands 2 and 3 are VQ-coded.
     let mut bits: Vec<u8> = Vec::new();
@@ -226,8 +266,11 @@ fn hf_vq_subbands_use_a_supplied_book() {
 /// (every second block of 128 taps, 6.2.4.7) are undone, with unit DC gain.
 #[test]
 fn x96_prototype_is_linear_phase_with_unit_gain() {
-    let g: Vec<f64> =
-        tables::X96_QMF_FIR.iter().enumerate().map(|(n, &v)| if (n / 128) % 2 == 1 { -v } else { v }).collect();
+    let g: Vec<f64> = tables::X96_QMF_FIR
+        .iter()
+        .enumerate()
+        .map(|(n, &v)| if (n / 128) % 2 == 1 { -v } else { v })
+        .collect();
     for n in 0..512 {
         assert_eq!(g[n], g[1023 - n], "tap {n}");
     }
@@ -250,13 +293,24 @@ fn downmix_table_follows_its_grid() {
         } else {
             -15.0 + 0.125 * (i - 120) as f64
         };
-        let gain = if db == -3.0 { std::f64::consts::FRAC_1_SQRT_2 } else { 10f64.powf(db / 20.0) };
+        let gain = if db == -3.0 {
+            std::f64::consts::FRAC_1_SQRT_2
+        } else {
+            10f64.powf(db / 20.0)
+        };
         let want = 32768.0 * gain;
-        assert!((tables::DMIX_TABLE[i] as f64 - want).abs() <= 1.0, "index {i}: {} vs {want:.1}", tables::DMIX_TABLE[i]);
+        assert!(
+            (tables::DMIX_TABLE[i] as f64 - want).abs() <= 1.0,
+            "index {i}: {} vs {want:.1}",
+            tables::DMIX_TABLE[i]
+        );
         if i >= 40 {
             let inv = 65536.0 / gain;
             let got = tables::INV_DMIX_TABLE[i - 40] as f64;
-            assert!((got - inv).abs() / inv < 1e-4, "inverse index {i}: {got} vs {inv:.1}");
+            assert!(
+                (got - inv).abs() / inv < 1e-4,
+                "inverse index {i}: {got} vs {inv:.1}"
+            );
         }
     }
 }
@@ -269,7 +323,9 @@ fn corrupt_frames_never_panic() {
     let mut cfg = EncoderConfig::new(48_000, Layout::Surround51Side, 768_000);
     cfg.adpcm_codebook = Some(book.clone());
     let mut enc = Encoder::new(cfg).unwrap();
-    let pcm: Vec<f32> = (0..48_00 * 6).map(|i| ((i / 6) as f32 * 0.03 * (1 + i % 6) as f32).sin() * 0.3).collect();
+    let pcm: Vec<f32> = (0..48_00 * 6)
+        .map(|i| ((i / 6) as f32 * 0.03 * (1 + i % 6) as f32).sin() * 0.3)
+        .collect();
     let mut frames = enc.encode(&pcm).unwrap();
     frames.extend(enc.flush().unwrap());
     let mut seed = 0x2545F4914F6CDD1Du64;

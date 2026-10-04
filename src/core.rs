@@ -10,12 +10,12 @@
 //! runs per subsubframe as the samples are dequantised, against the
 //! subband's own reconstructed history ([`crate::adpcm`]).
 
+use super::Error;
 use super::adpcm::{AdpcmFallback, PredictorState};
 use super::bits::BitReader;
 use super::huffman::{self, SampleCoding};
 use super::tables;
 use super::vq::{AdpcmCodebook, HfVqCodebook};
-use super::Error;
 
 /// Subbands of the core filter bank.
 pub(crate) const NSB: usize = 32;
@@ -51,12 +51,20 @@ pub(crate) struct CodingParams {
 impl CodingParams {
     /// `nSUBS` of channel `src` in the frame numbering.
     pub fn source_subs(&self, src: usize) -> usize {
-        if src < self.base { self.lower_subs[src] } else { self.subs[src - self.base] }
+        if src < self.base {
+            self.lower_subs[src]
+        } else {
+            self.subs[src - self.base]
+        }
     }
 }
 
 /// Read `SUBS` … `ADJ` for `n` channels numbered from `lower_subs.len()`.
-pub(crate) fn parse_coding_params(r: &mut BitReader, n: usize, lower_subs: &[usize]) -> Result<CodingParams, Error> {
+pub(crate) fn parse_coding_params(
+    r: &mut BitReader,
+    n: usize,
+    lower_subs: &[usize],
+) -> Result<CodingParams, Error> {
     if n == 0 || n > MAX_SET {
         return Err(Error::Invalid("channel count of a coding set out of range"));
     }
@@ -89,7 +97,9 @@ pub(crate) fn parse_coding_params(r: &mut BitReader, n: usize, lower_subs: &[usi
     for ch in 0..n {
         p.joinx[ch] = r.bits(3)? as usize;
         if p.joinx[ch] > base + ch {
-            return Err(Error::Invalid("JOINX source channel is not a lower channel"));
+            return Err(Error::Invalid(
+                "JOINX source channel is not a lower channel",
+            ));
         }
     }
     for ch in 0..n {
@@ -158,7 +168,9 @@ impl SideInfo {
     /// Subbands with `PMODE` = 1 below `VQSUB` (the ones whose prediction
     /// is inverted; `PMODE` above `VQSUB` has no effect, Table 5-29).
     pub fn predicted(&self, p: &CodingParams) -> usize {
-        (0..p.n).map(|ch| (0..p.vqsub[ch]).filter(|&sb| self.pmode[ch][sb]).count()).sum()
+        (0..p.n)
+            .map(|ch| (0..p.vqsub[ch]).filter(|&sb| self.pmode[ch][sb]).count())
+            .sum()
     }
 }
 
@@ -168,7 +180,9 @@ fn read_scale_index(r: &mut BitReader, shuff: u32, acc: &mut i32) -> Result<usiz
         6 => r.bits(7)? as i32,
         _ => {
             // Huffman: the difference from the previous index.
-            *acc += huffman::scale_book(shuff).expect("SHUFF < 5 has a book").decode(r)?;
+            *acc += huffman::scale_book(shuff)
+                .expect("SHUFF < 5 has a book")
+                .decode(r)?;
             *acc
         }
     };
@@ -189,13 +203,19 @@ fn scale_lookup(shuff: u32, idx: usize) -> Result<f64, Error> {
     };
     match v {
         Some(v) if v > 0 => Ok(v as f64),
-        _ => Err(Error::Invalid("scale factor index outside the quantisation table")),
+        _ => Err(Error::Invalid(
+            "scale factor index outside the quantisation table",
+        )),
     }
 }
 
 /// Read one subframe's side information (Table 5-28 from `PMODE` to
 /// `JOIN_SCALES`; the same in Tables 6-19 and 6-24). `ssc` is `nSSC`.
-pub(crate) fn parse_side_info(r: &mut BitReader, p: &CodingParams, ssc: usize) -> Result<SideInfo, Error> {
+pub(crate) fn parse_side_info(
+    r: &mut BitReader,
+    p: &CodingParams,
+    ssc: usize,
+) -> Result<SideInfo, Error> {
     let mut si = SideInfo {
         ssc,
         pmode: [[false; NSB]; MAX_SET],
@@ -280,7 +300,8 @@ pub(crate) fn parse_side_info(r: &mut BitReader, p: &CodingParams, ssc: usize) -
     for ch in 0..p.n {
         if p.joinx[ch] > 0 {
             let src = p.joinx[ch] - 1;
-            si.join_scales[ch] = read_join_scales(r, join_shuff[ch], p.subs[ch], p.source_subs(src))?;
+            si.join_scales[ch] =
+                read_join_scales(r, join_shuff[ch], p.subs[ch], p.source_subs(src))?;
         }
     }
     Ok(si)
@@ -288,14 +309,21 @@ pub(crate) fn parse_side_info(r: &mut BitReader, p: &CodingParams, ssc: usize) -
 
 /// `JOIN_SCALES` for subbands `from..to`: the `JOIN_SHUFF` code, biased by
 /// 64, into D.3.
-pub(crate) fn read_join_scales(r: &mut BitReader, shuff: u32, from: usize, to: usize) -> Result<[f64; NSB], Error> {
+pub(crate) fn read_join_scales(
+    r: &mut BitReader,
+    shuff: u32,
+    from: usize,
+    to: usize,
+) -> Result<[f64; NSB], Error> {
     let mut out = [0.0; NSB];
     let book = huffman::scale_book(shuff);
     for v in out.iter_mut().take(to).skip(from) {
         let raw = match shuff {
             5 => r.bits(6)? as i32,
             6 => r.bits(7)? as i32,
-            _ => book.ok_or(Error::Invalid("JOIN_SHUFF without a code book"))?.decode(r)?,
+            _ => book
+                .ok_or(Error::Invalid("JOIN_SHUFF without a code book"))?
+                .decode(r)?,
         };
         let scale = usize::try_from(raw + 64)
             .ok()
@@ -307,7 +335,11 @@ pub(crate) fn read_join_scales(r: &mut BitReader, shuff: u32, from: usize, to: u
 }
 
 /// Read the eight quantisation indices of one subband subsubframe.
-pub(crate) fn read_indices(r: &mut BitReader, coding: SampleCoding, q: &mut [i32; 8]) -> Result<(), Error> {
+pub(crate) fn read_indices(
+    r: &mut BitReader,
+    coding: SampleCoding,
+    q: &mut [i32; 8],
+) -> Result<(), Error> {
     match coding {
         SampleCoding::None => q.fill(0),
         SampleCoding::Huffman(book) => {
@@ -340,7 +372,9 @@ pub(crate) struct ChannelBuf {
 
 impl ChannelBuf {
     pub fn new(bands: usize, blocks: usize) -> Self {
-        Self { s: vec![vec![0.0; blocks]; bands] }
+        Self {
+            s: vec![vec![0.0; blocks]; bands],
+        }
     }
 }
 
@@ -401,7 +435,11 @@ pub(crate) fn read_subsubframe(
     for ch in 0..p.n {
         for sb in 0..p.vqsub[ch] {
             let abits = si.abits[ch][sb];
-            let sel = if (1..=10).contains(&abits) { p.sel[ch][abits as usize - 1] } else { 0 };
+            let sel = if (1..=10).contains(&abits) {
+                p.sel[ch][abits as usize - 1]
+            } else {
+                0
+            };
             let coding = huffman::sample_coding(abits, sel)?;
             read_indices(r, coding, &mut q)?;
             let out = &mut bufs[ch].s[sb][t..t + 8];
@@ -409,8 +447,16 @@ pub(crate) fn read_subsubframe(
                 out.fill(0.0);
             } else {
                 let step = ctx.step_table[abits as usize] as f64 / (1u32 << 22) as f64;
-                let tm = if si.tmode[ch][sb] == 0 { si.ssc } else { si.tmode[ch][sb] as usize };
-                let sf = if ssf < tm { si.scales[ch][sb][0] } else { si.scales[ch][sb][1] };
+                let tm = if si.tmode[ch][sb] == 0 {
+                    si.ssc
+                } else {
+                    si.tmode[ch][sb] as usize
+                };
+                let sf = if ssf < tm {
+                    si.scales[ch][sb][0]
+                } else {
+                    si.scales[ch][sb][1]
+                };
                 let mut scale = step * sf;
                 if let SampleCoding::Huffman(_) = coding {
                     scale *= p.adj[ch][abits as usize - 1];
@@ -478,7 +524,11 @@ pub(crate) fn apply_joint(
             let src = p.joinx[ch] - 1;
             for sb in p.subs[ch]..p.source_subs(src) {
                 for s in t0..t0 + n {
-                    let v = if src < p.base { lower[src].s[sb][s] } else { bufs[src - p.base].s[sb][s] };
+                    let v = if src < p.base {
+                        lower[src].s[sb][s]
+                    } else {
+                        bufs[src - p.base].s[sb][s]
+                    };
                     bufs[ch].s[sb][s] = si.join_scales[ch][sb] * v;
                 }
             }

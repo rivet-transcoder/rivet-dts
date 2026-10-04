@@ -57,16 +57,22 @@ impl AdpcmCodebook {
     /// coefficients × 2¹³.
     pub fn from_entries(entries: &[[i16; ADPCM_ORDER]]) -> Result<Self, Error> {
         if entries.len() != ADPCM_VECTORS {
-            return Err(Error::Invalid("an ADPCM code book has exactly 4096 vectors"));
+            return Err(Error::Invalid(
+                "an ADPCM code book has exactly 4096 vectors",
+            ));
         }
-        Ok(Self { entries: entries.into() })
+        Ok(Self {
+            entries: entries.into(),
+        })
     }
 
     /// From 32 768 bytes: 4 096 × 4 big-endian 16-bit two's-complement
     /// entries, vector after vector.
     pub fn from_be_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() != ADPCM_VECTORS * ADPCM_ORDER * 2 {
-            return Err(Error::Invalid("an ADPCM code book file is 32768 bytes (4096 × 4 × i16 BE)"));
+            return Err(Error::Invalid(
+                "an ADPCM code book file is 32768 bytes (4096 × 4 × i16 BE)",
+            ));
         }
         let entries: Vec<[i16; ADPCM_ORDER]> = bytes
             .as_chunks::<8>()
@@ -125,7 +131,9 @@ impl AdpcmCodebook {
                 shrink *= 0.97;
             }
         }
-        Self { entries: entries.into() }
+        Self {
+            entries: entries.into(),
+        }
     }
 }
 
@@ -138,7 +146,11 @@ pub struct HfVqCodebook {
 
 impl fmt::Debug for HfVqCodebook {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "HfVqCodebook {{ first: {:?}, .. }}", &self.entries[0][..4])
+        write!(
+            f,
+            "HfVqCodebook {{ first: {:?}, .. }}",
+            &self.entries[0][..4]
+        )
     }
 }
 
@@ -146,16 +158,22 @@ impl HfVqCodebook {
     /// From the 1 024 vectors of 32 elements, each element × 2⁴.
     pub fn from_entries(entries: &[[i8; HF_VQ_LEN]]) -> Result<Self, Error> {
         if entries.len() != HF_VQ_VECTORS {
-            return Err(Error::Invalid("a high-frequency VQ code book has exactly 1024 vectors"));
+            return Err(Error::Invalid(
+                "a high-frequency VQ code book has exactly 1024 vectors",
+            ));
         }
-        Ok(Self { entries: entries.into() })
+        Ok(Self {
+            entries: entries.into(),
+        })
     }
 
     /// From the table as printed: 16 384 16-bit entries (big-endian here),
     /// 16 per vector, each holding two elements, high byte first.
     pub fn from_be_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() != HF_VQ_VECTORS * HF_VQ_LEN {
-            return Err(Error::Invalid("a high-frequency VQ code book file is 32768 bytes"));
+            return Err(Error::Invalid(
+                "a high-frequency VQ code book file is 32768 bytes",
+            ));
         }
         let entries: Vec<[i8; HF_VQ_LEN]> = bytes
             .as_chunks::<HF_VQ_LEN>()
@@ -207,10 +225,17 @@ mod tests {
     #[test]
     fn byte_forms_round_trip() {
         let book = AdpcmCodebook::private_test_book();
-        let bytes: Vec<u8> = book.entries().iter().flatten().flat_map(|v| v.to_be_bytes()).collect();
+        let bytes: Vec<u8> = book
+            .entries()
+            .iter()
+            .flatten()
+            .flat_map(|v| v.to_be_bytes())
+            .collect();
         assert_eq!(AdpcmCodebook::from_be_bytes(&bytes).unwrap(), book);
         assert!(AdpcmCodebook::from_be_bytes(&bytes[1..]).is_err());
-        let hf: Vec<u8> = (0..HF_VQ_VECTORS * HF_VQ_LEN).map(|i| (i * 7) as u8).collect();
+        let hf: Vec<u8> = (0..HF_VQ_VECTORS * HF_VQ_LEN)
+            .map(|i| (i * 7) as u8)
+            .collect();
         let hfb = HfVqCodebook::from_be_bytes(&hf).unwrap();
         assert_eq!(hfb.element(0, 1), 7.0 / 16.0);
         // Vector 1 starts at byte 32: element 4 is byte 36.

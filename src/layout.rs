@@ -72,8 +72,8 @@ pub enum Speaker {
 const ALL: [Speaker; 26] = {
     use Speaker::*;
     [
-        FL, FR, FC, LFE, BL, BR, FLC, FRC, BC, SL, SR, TC, TFL, TFC, TFR, TBL, TBC, TBR, WL, WR, LFE2, TSL, TSR, BFC,
-        BFL, BFR,
+        FL, FR, FC, LFE, BL, BR, FLC, FRC, BC, SL, SR, TC, TFL, TFC, TFR, TBL, TBC, TBR, WL, WR,
+        LFE2, TSL, TSR, BFC, BFL, BFR,
     ]
 };
 
@@ -96,7 +96,10 @@ impl SpeakerList {
                 len += 1;
             }
         }
-        Self { len: len as u8, list }
+        Self {
+            len: len as u8,
+            list,
+        }
     }
 
     /// The speakers, in canonical order.

@@ -8,7 +8,11 @@ pub(crate) fn crc16(data: &[u8]) -> u16 {
     for &b in data {
         c ^= (b as u16) << 8;
         for _ in 0..8 {
-            c = if c & 0x8000 != 0 { (c << 1) ^ 0x1021 } else { c << 1 };
+            c = if c & 0x8000 != 0 {
+                (c << 1) ^ 0x1021
+            } else {
+                c << 1
+            };
         }
     }
     c

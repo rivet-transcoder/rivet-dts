@@ -29,7 +29,11 @@ fn normal(hist: &[f64; ADPCM_ORDER], x: &[f64]) -> Normal {
     let mut seq = Vec::with_capacity(ADPCM_ORDER + x.len());
     seq.extend(hist.iter().rev());
     seq.extend_from_slice(x);
-    let mut nm = Normal { e0: 0.0, p: [0.0; ADPCM_ORDER], r: [[0.0; ADPCM_ORDER]; ADPCM_ORDER] };
+    let mut nm = Normal {
+        e0: 0.0,
+        p: [0.0; ADPCM_ORDER],
+        r: [[0.0; ADPCM_ORDER]; ADPCM_ORDER],
+    };
     for (m, &xm) in x.iter().enumerate() {
         let reg: [f64; ADPCM_ORDER] = std::array::from_fn(|n| seq[m + ADPCM_ORDER - n - 1]);
         nm.e0 += xm * xm;
@@ -56,7 +60,11 @@ fn error(nm: &Normal, c: &[f64; ADPCM_ORDER]) -> f64 {
 
 /// The code book vector with the largest open-loop prediction gain, if
 /// that gain is at least [`MIN_GAIN`]: `(PVQ, gain)`.
-pub fn best_vector(book: &AdpcmCodebook, hist: &[f64; ADPCM_ORDER], x: &[f64]) -> Option<(usize, f64)> {
+pub fn best_vector(
+    book: &AdpcmCodebook,
+    hist: &[f64; ADPCM_ORDER],
+    x: &[f64],
+) -> Option<(usize, f64)> {
     let nm = normal(hist, x);
     if nm.e0 <= 0.0 {
         return None;
@@ -95,7 +103,9 @@ mod tests {
     #[test]
     fn finds_a_predictor_for_a_tone_and_scores_it_exactly() {
         let book = AdpcmCodebook::private_test_book();
-        let sig: Vec<f64> = (0..20).map(|n| 1000.0 * (0.9 * n as f64 + 0.3).cos()).collect();
+        let sig: Vec<f64> = (0..20)
+            .map(|n| 1000.0 * (0.9 * n as f64 + 0.3).cos())
+            .collect();
         let hist = [sig[3], sig[2], sig[1], sig[0]];
         let x = &sig[4..];
         let (pvq, gain) = best_vector(&book, &hist, x).expect("a tone is predictable");
@@ -114,7 +124,16 @@ mod tests {
         let nm = normal(&hist, x);
         assert!((error(&nm, &c) - direct).abs() < 1e-6 * direct.max(1.0));
         // White noise is not predictable.
-        let noise: Vec<f64> = (0..20).map(|n| ((n * 7919 % 101) as f64 - 50.0) * 10.0).collect();
-        assert!(best_vector(&book, &[noise[3], noise[2], noise[1], noise[0]], &noise[4..]).is_none());
+        let noise: Vec<f64> = (0..20)
+            .map(|n| ((n * 7919 % 101) as f64 - 50.0) * 10.0)
+            .collect();
+        assert!(
+            best_vector(
+                &book,
+                &[noise[3], noise[2], noise[1], noise[0]],
+                &noise[4..]
+            )
+            .is_none()
+        );
     }
 }
