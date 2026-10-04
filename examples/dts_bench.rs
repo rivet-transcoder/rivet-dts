@@ -4,7 +4,7 @@
 //! real time each runs (best of several passes) with a hash of the frames
 //! and of the decoded PCM. Further arguments name DTS files to decode.
 //!
-//! `cargo run --release --example bench -- <pcm.f32> [passes] [filter] [file.dts ...]`
+//! `cargo run --release --example dts_bench -- <pcm.f32> [passes] [filter] [file.dts ...]`
 
 use std::time::Instant;
 
